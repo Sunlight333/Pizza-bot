@@ -1,0 +1,122 @@
+"""
+Evolution API webhook — receives WhatsApp events and routes to the bot.
+Responds 200 immediately and processes async.
+Optional HMAC verification when EVOLUTION_WEBHOOK_SECRET is set.
+"""
+import hashlib
+import hmac
+import logging
+from typing import Any, Optional
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+
+from app.config import settings
+from app.database import AsyncSessionLocal
+from app.middleware.rate_limit import limiter
+from app.services import audio as audio_svc
+from app.services.ai_engine import process_incoming
+from app.services.whatsapp import client as wa_client
+
+log = logging.getLogger(__name__)
+router = APIRouter()
+
+
+def _extract_phone(data: dict) -> Optional[str]:
+    key = data.get("key", {}) or {}
+    remote = key.get("remoteJid") or ""
+    return remote.split("@")[0] if remote else None
+
+
+def _extract_text(data: dict) -> Optional[str]:
+    msg = data.get("message") or {}
+    return (
+        msg.get("conversation")
+        or (msg.get("extendedTextMessage") or {}).get("text")
+        or (msg.get("buttonsResponseMessage") or {}).get("selectedDisplayText")
+        or (msg.get("listResponseMessage") or {}).get("title")
+    )
+
+
+def _extract_audio_id(data: dict) -> Optional[str]:
+    msg = data.get("message") or {}
+    if "audioMessage" in msg:  # value can be {} — presence is what matters
+        return (data.get("key") or {}).get("id")
+    return None
+
+
+def _verify_signature(raw_body: bytes, header_signature: Optional[str]) -> bool:
+    """
+    Verify HMAC-SHA256 of the raw body against EVOLUTION_WEBHOOK_SECRET.
+    If the secret is not configured, verification is skipped (returns True).
+    Header format: "sha256=<hex>" or just the hex digest.
+    """
+    secret = settings.evolution_webhook_secret
+    if not secret:
+        return True
+    if not header_signature:
+        return False
+    sent = header_signature.split("=", 1)[-1].strip()
+    expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(sent.lower(), expected.lower())
+
+
+async def _process(event: dict) -> None:
+    event_type = event.get("event") or event.get("eventType")
+    data = event.get("data") or {}
+
+    if event_type and "message" not in event_type.lower():
+        return
+
+    if (data.get("key") or {}).get("fromMe"):
+        return
+
+    phone = _extract_phone(data)
+    if not phone:
+        return
+
+    text = _extract_text(data)
+    audio_id = _extract_audio_id(data)
+
+    if audio_id and not text:
+        audio_bytes = await wa_client.download_media(audio_id)
+        if audio_bytes:
+            text = await audio_svc.transcribe_audio(audio_bytes)
+        if not text:
+            await wa_client.send_text(
+                phone,
+                "Desculpa, não consegui entender o áudio. Pode escrever ou mandar de novo?",
+            )
+            return
+
+    if not text:
+        return
+
+    async with AsyncSessionLocal() as db:
+        reply = await process_incoming(db, phone=phone, text=text, is_audio=bool(audio_id))
+    if reply:
+        await wa_client.send_text(phone, reply)
+
+
+@router.post("/evolution")
+@limiter.limit("100/minute")
+async def evolution_webhook(request: Request, bg: BackgroundTasks):
+    raw = await request.body()
+    sig = request.headers.get("x-hub-signature-256") or request.headers.get("x-signature")
+    if not _verify_signature(raw, sig):
+        log.warning("webhook signature mismatch")
+        raise HTTPException(status_code=401, detail="invalid signature")
+
+    try:
+        body: dict[str, Any] = await request.json()
+    except Exception:
+        return {"ok": False, "reason": "invalid-json"}
+
+    bg.add_task(_handle_safely, body)
+    return {"ok": True}
+
+
+async def _handle_safely(event: dict) -> None:
+    try:
+        await _process(event)
+    except Exception:
+        log.exception("webhook processing failed")

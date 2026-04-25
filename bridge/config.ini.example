@@ -1,0 +1,17 @@
+[api]
+url = https://pizzabot.seu-dominio.com.br
+token = CHANGE-ME-to-first-16-chars-of-JWT-SECRET-plus-bridge
+
+[datacaixa]
+pedidos_folder = C:\Datacaixa\Integracao\Pedidos
+
+[firebird]
+path = C:\Datacaixa\BANCO.FDB
+user = SYSDBA
+password = masterkey
+
+[service]
+host_label = pizzeria-pc-01
+poll_seconds = 5
+heartbeat_seconds = 30
+tax_refresh_hours = 6

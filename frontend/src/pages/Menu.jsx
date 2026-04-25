@@ -1,0 +1,220 @@
+import { useRef, useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { motion } from 'framer-motion'
+import { Plus, Edit2, Trash2, Pizza as PizzaIcon, Tag, Upload, AlertTriangle } from 'lucide-react'
+import toast from 'react-hot-toast'
+
+import AnimatedPage from '@/components/layout/AnimatedPage'
+import ProductModal from '@/components/menu/ProductModal'
+import CategoryManager from '@/components/menu/CategoryManager'
+import { SkeletonCard } from '@/components/ui/Skeleton'
+import { menuApi } from '@/services/menu'
+
+const brl = (n) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0)
+
+export default function Menu() {
+  const qc = useQueryClient()
+  const [activeCat, setActiveCat] = useState(null)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editing, setEditing] = useState(null)
+  const [showCategories, setShowCategories] = useState(false)
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn: menuApi.listCategories,
+  })
+
+  const { data: products = [], isLoading } = useQuery({
+    queryKey: ['products', activeCat],
+    queryFn: () => menuApi.listProducts(activeCat ? { category_id: activeCat } : {}),
+  })
+
+  const saveMut = useMutation({
+    mutationFn: (data) =>
+      data.id ? menuApi.updateProduct(data.id, data) : menuApi.createProduct(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['products'] })
+      qc.invalidateQueries({ queryKey: ['categories'] })
+      toast.success('Salvo')
+    },
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => menuApi.deleteProduct(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['products'] })
+      toast.success('Desativado')
+    },
+  })
+
+  const onEdit = (p) => { setEditing(p); setModalOpen(true) }
+  const onNew = () => { setEditing(null); setModalOpen(true) }
+
+  // C2: warn when products are missing fiscal codes (NCM/CFOP/CSOSN)
+  const { data: missingTax = [] } = useQuery({
+    queryKey: ['products-missing-tax'],
+    queryFn: menuApi.missingTax,
+    refetchInterval: 60_000,
+  })
+  const missingIds = new Set(missingTax.map((m) => m.id))
+
+  const taxImportRef = useRef(null)
+  const taxImport = useMutation({
+    mutationFn: (file) => menuApi.taxImport(file),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['products'] })
+      qc.invalidateQueries({ queryKey: ['products-missing-tax'] })
+      toast.success(`${r.updated} produto(s) atualizados`)
+      if (r.not_found?.length) {
+        toast(`Não encontrados: ${r.not_found.slice(0, 3).join(', ')}${r.not_found.length > 3 ? '…' : ''}`, { icon: '⚠️' })
+      }
+    },
+    onError: (e) => toast.error(e.response?.data?.detail || 'Erro ao importar'),
+  })
+
+  if (showCategories) {
+    return (
+      <AnimatedPage className="space-y-3">
+        <button
+          onClick={() => setShowCategories(false)}
+          className="btn-ghost text-sm"
+        >
+          ← Voltar para produtos
+        </button>
+        <CategoryManager />
+      </AnimatedPage>
+    )
+  }
+
+  return (
+    <AnimatedPage className="space-y-4">
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => setActiveCat(null)}
+          className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors
+            ${activeCat === null ? 'bg-primary-gradient text-white shadow-glow-primary' : 'glass-card text-white/60 hover:text-white'}`}
+        >
+          Todos
+        </button>
+        {categories.map((c) => (
+          <button
+            key={c.id}
+            onClick={() => setActiveCat(c.id)}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors
+              ${activeCat === c.id ? 'bg-primary-gradient text-white shadow-glow-primary' : 'glass-card text-white/60 hover:text-white'}`}
+          >
+            {c.name} <span className="text-white/40 ml-1">({c.product_count})</span>
+          </button>
+        ))}
+        <button
+          onClick={() => setShowCategories(true)}
+          className="btn-ghost flex items-center gap-2 ml-auto text-sm"
+        >
+          <Tag size={14} /> Categorias
+        </button>
+        <input
+          ref={taxImportRef}
+          type="file"
+          accept=".csv"
+          className="hidden"
+          onChange={(e) => e.target.files?.[0] && taxImport.mutate(e.target.files[0])}
+        />
+        <button
+          onClick={() => taxImportRef.current?.click()}
+          className="btn-ghost flex items-center gap-2 text-sm"
+          title="Importar NCM/CFOP/CSOSN dos produtos via CSV"
+        >
+          <Upload size={14} /> CSV Fiscal
+        </button>
+        <button onClick={onNew} className="btn-primary flex items-center gap-2 text-sm">
+          <Plus size={16} /> Novo Produto
+        </button>
+      </div>
+
+      {missingTax.length > 0 && (
+        <div className="glass-card p-3 border-yellow-500/30 bg-yellow-500/5 flex items-start gap-3">
+          <AlertTriangle size={18} className="text-yellow-400 shrink-0 mt-0.5" />
+          <div className="text-sm flex-1">
+            <span className="text-yellow-300 font-medium">
+              {missingTax.length} produto(s) sem dados fiscais completos.
+            </span>
+            <span className="text-white/60 ml-2">
+              Datacaixa pode rejeitar. Edite o produto ou importe um CSV. Fallback dos
+              padrões em <code>Configurações → Bot</code> é usado enquanto isso.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <SkeletonCard /><SkeletonCard /><SkeletonCard />
+        </div>
+      ) : products.length === 0 ? (
+        <div className="glass-card p-12 text-center text-white/50">
+          <PizzaIcon size={40} className="mx-auto mb-3 text-white/30" />
+          Nenhum produto nesta categoria
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {products.map((p, i) => (
+            <motion.div
+              key={p.id}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.03 }}
+              className="glass-card p-4 hover:border-primary/30 transition-all hover:-translate-y-0.5"
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <h3 className="font-medium truncate">{p.name}</h3>
+                    {missingIds.has(p.id) && (
+                      <span title="Sem NCM/CFOP/CSOSN — Datacaixa pode rejeitar">
+                        <AlertTriangle size={12} className="text-yellow-400 shrink-0" />
+                      </span>
+                    )}
+                  </div>
+                  {p.description && (
+                    <p className="text-xs text-white/50 mt-1 line-clamp-2">{p.description}</p>
+                  )}
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${p.is_active ? 'bg-success/20 text-success' : 'bg-white/10 text-white/40'}`}>
+                  {p.is_active ? 'Ativo' : 'Inativo'}
+                </span>
+              </div>
+              <div className="space-y-1 mb-3">
+                {(p.sizes || []).map((s) => (
+                  <div key={s.size} className="flex justify-between text-sm">
+                    <span className="text-white/60">{s.size}</span>
+                    <span className="text-accent font-medium">{brl(s.price)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 border-t border-glass-border pt-3">
+                <button onClick={() => onEdit(p)} className="btn-ghost text-xs py-1.5 flex-1 flex items-center justify-center gap-1">
+                  <Edit2 size={12} /> Editar
+                </button>
+                <button
+                  onClick={() => { if (confirm('Desativar este produto?')) deleteMut.mutate(p.id) }}
+                  className="btn-ghost text-xs py-1.5 px-3 hover:text-red-400"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      <ProductModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSave={(data) => saveMut.mutateAsync(data)}
+        product={editing}
+        categories={categories}
+      />
+    </AnimatedPage>
+  )
+}
