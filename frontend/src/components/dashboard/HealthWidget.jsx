@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, Activity } from 'lucide-react'
 
 import { api } from '@/services/api'
+import { ASSETS } from '@/utils/assets'
 
 const LABELS = {
   postgres: 'Postgres',
@@ -39,14 +40,27 @@ export default function HealthWidget() {
 
   const components = ['postgres', 'redis', 'evolution', 'bridge', 'openai']
 
+  // Aggregate state for the system-wide hero icon
+  const summary = !data
+    ? 'down'
+    : components.every((c) => data[c]?.ok)
+    ? 'ok'
+    : components.some((c) => data[c]?.ok)
+    ? 'degraded'
+    : 'down'
+
   return (
     <div className="glass-card p-4">
       <button
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between text-left"
       >
-        <div className="flex items-center gap-2 text-sm">
-          <Activity size={14} className="text-white/50" />
+        <div className="flex items-center gap-2.5 text-sm">
+          <img
+            src={ASSETS.icons.health[summary]}
+            alt={summary}
+            className="w-7 h-7 rounded-lg ring-1 ring-glass-border shrink-0"
+          />
           <span className="text-white/70">Saúde do sistema</span>
         </div>
         <div className="flex items-center gap-3">

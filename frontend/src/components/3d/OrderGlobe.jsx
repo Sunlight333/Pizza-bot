@@ -57,18 +57,24 @@ function Dots({ count, intensity }) {
 
 function OrderGlobeFallback({ orderCount }) {
   return (
-    <div className="relative w-full h-full flex items-center justify-center">
-      <div className="text-center">
-        <div className="font-display text-5xl text-accent">{orderCount || 0}</div>
-        <div className="text-xs text-white/40 mt-1 uppercase tracking-wide">pedidos hoje</div>
-      </div>
+    <div className="relative w-full h-full flex items-center justify-center overflow-hidden rounded-2xl">
       <div
-        className="absolute inset-8 rounded-full border border-primary/30"
+        aria-hidden="true"
+        className="absolute inset-0 bg-cover bg-center opacity-70"
+        style={{ backgroundImage: 'url(/images/backgrounds/order-globe-poster.png)' }}
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0"
         style={{
           background:
-            'radial-gradient(circle at 50% 50%, rgba(255,107,53,0.18), transparent 65%)',
+            'radial-gradient(circle at 50% 50%, rgba(15,15,35,0) 30%, rgba(15,15,35,0.85) 80%)',
         }}
       />
+      <div className="text-center relative">
+        <div className="font-display text-5xl text-accent drop-shadow">{orderCount || 0}</div>
+        <div className="text-xs text-white/60 mt-1 uppercase tracking-wide">pedidos hoje</div>
+      </div>
     </div>
   )
 }

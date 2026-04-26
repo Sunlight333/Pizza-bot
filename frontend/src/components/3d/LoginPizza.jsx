@@ -58,12 +58,20 @@ function FallbackBg() {
   return (
     <div
       aria-hidden="true"
-      className="absolute inset-0 pointer-events-none"
+      className="absolute inset-0 pointer-events-none bg-center bg-cover"
       style={{
-        background:
-          'radial-gradient(circle at 50% 45%, rgba(255,107,53,0.35), transparent 60%), radial-gradient(circle at 50% 60%, rgba(255,215,0,0.18), transparent 65%)',
+        backgroundImage: 'url(/images/backgrounds/login-pizza-poster.png)',
+        filter: 'saturate(1.05)',
       }}
-    />
+    >
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(circle at 50% 45%, rgba(255,107,53,0.18), transparent 60%)',
+        }}
+      />
+    </div>
   )
 }
 

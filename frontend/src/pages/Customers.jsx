@@ -7,6 +7,7 @@ import AnimatedPage from '@/components/layout/AnimatedPage'
 import CountUp from '@/components/ui/CountUp'
 import { SkeletonCard } from '@/components/ui/Skeleton'
 import { customersApi } from '@/services/customers'
+import { ASSETS } from '@/utils/assets'
 
 const brl = (n) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0)
@@ -59,9 +60,17 @@ function CustomerProfile({ customerId, onClose }) {
               ) : (
                 <>
                   <div className="flex items-center gap-4 mb-6">
-                    <div className="w-16 h-16 rounded-full bg-primary-gradient flex items-center justify-center font-display text-xl">
-                      {initials(customer.name || customer.phone)}
-                    </div>
+                    {customer.name ? (
+                      <div className="w-16 h-16 rounded-full bg-primary-gradient flex items-center justify-center font-display text-xl shadow-glow-primary">
+                        {initials(customer.name)}
+                      </div>
+                    ) : (
+                      <img
+                        src={ASSETS.icons.avatar}
+                        alt=""
+                        className="w-16 h-16 rounded-full ring-1 ring-glass-border object-cover"
+                      />
+                    )}
                     <div>
                       <h2 className="font-display text-xl">{customer.name || 'Sem nome'}</h2>
                       <p className="text-white/60 text-sm">{customer.phone}</p>
@@ -183,9 +192,17 @@ export default function Customers() {
               className="glass-card p-4 text-left hover:border-primary/30 transition-all hover:-translate-y-0.5"
             >
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-primary-gradient flex items-center justify-center font-display text-lg shrink-0">
-                  {initials(c.name || c.phone)}
-                </div>
+                {c.name ? (
+                  <div className="w-12 h-12 rounded-full bg-primary-gradient flex items-center justify-center font-display text-lg shrink-0">
+                    {initials(c.name)}
+                  </div>
+                ) : (
+                  <img
+                    src={ASSETS.icons.avatar}
+                    alt=""
+                    className="w-12 h-12 rounded-full ring-1 ring-glass-border object-cover shrink-0"
+                  />
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{c.name || 'Sem nome'}</div>
                   <div className="text-xs text-white/50 truncate flex items-center gap-1">

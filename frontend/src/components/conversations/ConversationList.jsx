@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { MessageCircle, Clock, ShoppingBag } from 'lucide-react'
 
 import { conversationsApi, STATE_LABEL } from '@/services/conversations'
+import { ASSETS } from '@/utils/assets'
 
 const relTime = (iso) => {
   if (!iso) return ''
@@ -56,9 +57,17 @@ export default function ConversationList({ selectedPhone, onSelect }) {
                     isSelected ? 'bg-primary/15 border border-primary/40' : 'glass-card hover:border-primary/20'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="font-medium text-sm truncate">
-                      {c.customer_name || c.phone}
+                  <div className="flex items-center justify-between mb-1 gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <img
+                        src={c.is_human_takeover ? ASSETS.icons.channel.manual : ASSETS.icons.channel.whatsapp}
+                        alt=""
+                        className="w-5 h-5 rounded-md ring-1 ring-glass-border shrink-0"
+                        title={c.is_human_takeover ? 'Atendimento humano' : 'WhatsApp / bot'}
+                      />
+                      <div className="font-medium text-sm truncate">
+                        {c.customer_name || c.phone}
+                      </div>
                     </div>
                     <span className="text-[10px] text-white/40 flex items-center gap-0.5 shrink-0">
                       <Clock size={10} /> {relTime(c.last_message_at)}

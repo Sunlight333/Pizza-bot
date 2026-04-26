@@ -13,6 +13,8 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 
+import { ASSETS } from '@/utils/assets'
+
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/orders', label: 'Pedidos', icon: ClipboardList },
@@ -33,12 +35,16 @@ export default function Sidebar() {
       className="glass-card m-3 mr-0 flex flex-col overflow-hidden"
     >
       <div className="flex items-center gap-3 px-4 py-5">
-        <div className="text-2xl">🍕</div>
+        <img
+          src={ASSETS.brand.logo}
+          alt="Pizzabot"
+          className="w-9 h-9 rounded-xl shrink-0 object-cover ring-1 ring-glass-border shadow-glow-primary"
+        />
         {!collapsed && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="font-display text-lg"
+            className="font-display text-lg leading-none"
           >
             Pizzabot
           </motion.div>

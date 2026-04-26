@@ -4,6 +4,7 @@ import { Check, Clock, X } from 'lucide-react'
 
 import { api } from '@/services/api'
 import { ORDER_STATUS } from '@/services/orders'
+import { ASSETS } from '@/utils/assets'
 
 const ORDER = ['received', 'confirmed', 'preparing', 'out_for_delivery', 'delivered']
 
@@ -34,17 +35,17 @@ export default function OrderTimeline({ orderId, currentStatus }) {
             className="flex items-center gap-3"
           >
             <div
-              className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 overflow-hidden ${
                 reached || passed
-                  ? 'bg-primary-gradient shadow-glow-primary'
-                  : 'bg-white/10'
-              } ${isCurrent ? 'ring-2 ring-primary/40 animate-pulse-slow' : ''}`}
+                  ? 'ring-1 ring-primary/40 shadow-glow-primary'
+                  : 'opacity-40 grayscale'
+              } ${isCurrent ? 'ring-2 ring-primary/60 animate-pulse-slow' : ''}`}
             >
-              {reached || passed ? (
-                <Check size={14} className="text-white" />
-              ) : (
-                <Clock size={12} className="text-white/40" />
-              )}
+              <img
+                src={ASSETS.icons.status[s]}
+                alt={s}
+                className="w-full h-full object-cover"
+              />
             </div>
             <div className="flex-1">
               <div
@@ -70,8 +71,12 @@ export default function OrderTimeline({ orderId, currentStatus }) {
           animate={{ opacity: 1 }}
           className="flex items-center gap-3 mt-2 pt-2 border-t border-glass-border"
         >
-          <div className="w-7 h-7 rounded-full bg-red-500/20 flex items-center justify-center">
-            <X size={14} className="text-red-400" />
+          <div className="w-9 h-9 rounded-xl ring-1 ring-red-500/40 overflow-hidden shrink-0">
+            <img
+              src={ASSETS.icons.status.cancelled}
+              alt="cancelled"
+              className="w-full h-full object-cover"
+            />
           </div>
           <div>
             <div className="text-sm text-red-300">Cancelado</div>

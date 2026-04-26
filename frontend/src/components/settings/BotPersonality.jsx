@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Save, Bot, DollarSign, FileText, Shield } from 'lucide-react'
+import { Save, Bot, DollarSign, FileText, Shield, Calendar, Smartphone } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { api } from '@/services/api'
@@ -44,6 +44,20 @@ export default function BotPersonality() {
       </h3>
 
       <div>
+        <label className="text-xs text-white/50 mb-1 block">Nome do bot</label>
+        <input
+          type="text"
+          value={form.bot_name || ''}
+          onChange={(e) => set('bot_name', e.target.value)}
+          placeholder="Bia, Lucas, Cida..."
+          className="input-field"
+        />
+        <p className="text-[11px] text-white/40 mt-1">
+          Como a atendente virtual se apresenta nas conversas.
+        </p>
+      </div>
+
+      <div>
         <label className="text-xs text-white/50 mb-1 block">Cumprimento padrão</label>
         <textarea
           rows={2}
@@ -75,7 +89,39 @@ export default function BotPersonality() {
       </div>
 
       <div>
-        <label className="text-xs text-white/50 mb-1 block">Mensagem fora de horário</label>
+        <label className="text-xs text-white/50 mb-1 block flex items-center gap-1">
+          <Calendar size={12} /> Dias fechados
+        </label>
+        <div className="flex gap-1.5 flex-wrap">
+          {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((label, idx) => {
+            const closed = (form.closed_weekdays || []).includes(idx)
+            return (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => {
+                  const cur = form.closed_weekdays || []
+                  const next = closed ? cur.filter((d) => d !== idx) : [...cur, idx].sort()
+                  set('closed_weekdays', next)
+                }}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                  closed
+                    ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                    : 'border-glass-border bg-bg/30 text-white/60 hover:border-white/20'
+                }`}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+        <p className="text-[11px] text-white/40 mt-1">
+          Marque os dias em que a pizzaria está fechada — o bot responde com a mensagem abaixo.
+        </p>
+      </div>
+
+      <div>
+        <label className="text-xs text-white/50 mb-1 block">Mensagem fora de horário / dia fechado</label>
         <textarea
           rows={2}
           value={form.off_hours_message}
@@ -223,6 +269,31 @@ export default function BotPersonality() {
         <p className="text-[11px] text-white/40">
           Usados como fallback quando um produto não tem código próprio.
         </p>
+      </div>
+
+      <div className="border-t border-glass-border pt-4 space-y-3">
+        <h4 className="font-display text-sm flex items-center gap-2">
+          <Smartphone size={14} className="text-accent" /> PIX
+        </h4>
+        <p className="text-xs text-white/50">
+          Compartilhada pelo bot somente quando o cliente escolhe pagar com PIX.
+        </p>
+        <div className="grid grid-cols-1 gap-2">
+          <input
+            type="text"
+            value={form.pix_key || ''}
+            onChange={(e) => set('pix_key', e.target.value)}
+            placeholder="CNPJ, telefone, e-mail ou chave aleatória"
+            className="input-field text-sm"
+          />
+          <input
+            type="text"
+            value={form.pix_holder || ''}
+            onChange={(e) => set('pix_holder', e.target.value)}
+            placeholder="Titular da conta"
+            className="input-field text-sm"
+          />
+        </div>
       </div>
 
       <div className="border-t border-glass-border pt-4 space-y-2">

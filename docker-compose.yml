@@ -63,19 +63,62 @@ services:
     command: npm run dev -- --host 0.0.0.0
 
   evolution:
-    image: atendai/evolution-api:v2.1.1
+    # Use the actively-maintained evoapicloud fork — atendai/evolution-api was
+    # last updated Feb 2025 and its bundled Baileys can't connect to WhatsApp's
+    # current protocol (WS code 1006 on handshake). The homolog tag tracks the
+    # newest Baileys release, which is what we need for QR pairing to work.
+    image: evoapicloud/evolution-api:homolog
     profiles: ["full"]
     environment:
+      # Server / auth
+      SERVER_TYPE: http
+      SERVER_PORT: "8080"
+      SERVER_URL: http://localhost:8080
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
-      DATABASE_ENABLED: "false"
-      REDIS_ENABLED: "true"
-      REDIS_URI: redis://redis:6379
-      CONFIG_SESSION_PHONE_CLIENT: Pizzabot
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+
+      # Postgres — Evolution v2 requires a real DB; we share the project Postgres
+      # with a dedicated 'evolution' database created by an init script.
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: ${EVOLUTION_DB_URL}
+      DATABASE_CONNECTION_CLIENT_NAME: evolution_pizzabot
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+
+      # Cache (Redis already up in the project)
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/1
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_REDIS_SAVE_INSTANCES: "false"
+      CACHE_LOCAL_ENABLED: "false"
+
+      # Webhook → our FastAPI backend
       WEBHOOK_GLOBAL_ENABLED: "true"
       WEBHOOK_GLOBAL_URL: http://backend:8000/api/webhook/evolution
+      WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: "false"
+
+      # Branding shown in WhatsApp's "linked devices"
+      CONFIG_SESSION_PHONE_CLIENT: Pizzabot
+      CONFIG_SESSION_PHONE_NAME: Chrome
+      # Force a recent WhatsApp Web protocol version — the bundled Baileys default
+      # (2,3000,1015901307) has been deprecated by Meta, causing connection hangs.
+      CONFIG_SESSION_PHONE_VERSION: "2.3000.1027038921"
+
+      # Logging — verbose so we can see the connection error
+      LOG_LEVEL: "ERROR,WARN,INFO,LOG,VERBOSE,DEBUG,WEBHOOKS"
+      LOG_COLOR: "false"
+      LOG_BAILEYS: "error"
+      DEL_INSTANCE: "false"
+      QRCODE_LIMIT: "30"
     ports:
       - "8080:8080"
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     volumes:

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Plus, Trash2 } from 'lucide-react'
+import { X, Plus, Trash2, RotateCcw } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-import PizzaBuilder from '@/components/3d/PizzaBuilder'
+import { pizzaImage, ASSETS } from '@/utils/assets'
 
 const empty = {
   category_id: '',
@@ -155,6 +155,55 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
                 ))}
               </div>
 
+              {(() => {
+                const catName = categories.find((c) => c.id === Number(data.category_id))?.name
+                const autoSrc = pizzaImage(data.name, catName)
+                const usingAuto = !data.image_url
+                const previewSrc = data.image_url || autoSrc
+                return (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs text-white/50">Foto</label>
+                      {!usingAuto && (
+                        <button
+                          onClick={() => set('image_url', '')}
+                          className="btn-ghost text-xs py-1 px-2 flex items-center gap-1"
+                          title="Voltar para a foto automática (pizzaImage)"
+                        >
+                          <RotateCcw size={12} /> Usar automática
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex gap-3 items-start">
+                      <img
+                        src={previewSrc}
+                        alt=""
+                        onError={(e) => {
+                          if (e.currentTarget.dataset.fallback === '1') return
+                          e.currentTarget.dataset.fallback = '1'
+                          e.currentTarget.src = ASSETS.menu.productPlaceholder
+                        }}
+                        className="w-20 h-20 rounded-lg object-cover ring-1 ring-glass-border shrink-0 bg-bg/50"
+                      />
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          placeholder="/menu/savory/...jpeg ou URL completa (deixe vazio para foto automática)"
+                          value={data.image_url || ''}
+                          onChange={(e) => set('image_url', e.target.value)}
+                          className="input-field text-xs"
+                        />
+                        <p className="text-[10px] text-white/40 mt-1.5 leading-snug">
+                          {usingAuto
+                            ? `Automática via pizzaImage("${data.name || '…'}").`
+                            : 'Foto personalizada — sobrescreve a automática.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
               <div className="flex gap-4">
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -186,13 +235,6 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
 
               {data.is_pizza && (
                 <>
-                  <div className="rounded-xl overflow-hidden bg-bg/40">
-                    <PizzaBuilder
-                      flavorA={data.name || 'Mussarela'}
-                      flavorB={data.allows_half ? 'Calabresa' : null}
-                      height={180}
-                    />
-                  </div>
                   <div>
                     <label className="text-xs text-white/50 mb-1 block">
                       Bordas disponíveis (separadas por vírgula)

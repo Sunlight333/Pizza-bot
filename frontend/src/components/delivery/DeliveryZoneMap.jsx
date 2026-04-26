@@ -55,13 +55,19 @@ export default function DeliveryZoneMap({ zones = [] }) {
             const radius =
               ((sorted.length - i) / sorted.length) * (SIZE / 2 - 16)
             return (
+              // Animate transform-scale instead of the r attribute — framer-motion
+              // can produce intermediate `r="undefined"` frames when both `r={0}`
+              // and `animate={{ r }}` are set, which the browser rejects with
+              // "<circle> attribute r: Expected length, undefined".
               <motion.circle
                 key={z.id}
                 cx={center}
                 cy={center}
-                r={0}
-                animate={{ r: radius }}
+                r={radius}
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
                 transition={{ delay: i * 0.06, type: 'spring', stiffness: 120, damping: 18 }}
+                style={{ transformOrigin: `${center}px ${center}px`, cursor: 'pointer' }}
                 fill={colorFor(z.fee)}
                 fillOpacity={0.16}
                 stroke={colorFor(z.fee)}
@@ -69,7 +75,6 @@ export default function DeliveryZoneMap({ zones = [] }) {
                 strokeWidth={1.4}
                 onMouseEnter={() => setHover(z)}
                 onMouseLeave={() => setHover(null)}
-                style={{ cursor: 'pointer' }}
               />
             )
           })}

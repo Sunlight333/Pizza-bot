@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '@/stores/auth'
+import { getWsBase } from '@/utils/apiUrl'
 
 export function useLiveOrders({ onNewOrder, onStatusChange } = {}) {
   const qc = useQueryClient()
@@ -18,11 +19,8 @@ export function useLiveOrders({ onNewOrder, onStatusChange } = {}) {
   useEffect(() => {
     if (!token) return
 
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
     const wsUrl =
-      apiUrl.replace(/^http/, 'ws') +
-      '/api/orders/live?token=' +
-      encodeURIComponent(token)
+      getWsBase() + '/api/orders/live?token=' + encodeURIComponent(token)
 
     let stopped = false
     let retry = 0

@@ -286,12 +286,30 @@ async def _build_system_prompt(db: AsyncSession, state: dict) -> str:
         if cfg.enable_repeat_last_order else ""
     )
 
-    return f"""Você é o atendente virtual de uma pizzaria brasileira. Seja caloroso, natural e informal
-(use "você", "beleza", "fica tranquilo") — NUNCA soe robótico ou use listas numeradas de menu.
-Responda sempre em português brasileiro coloquial.
+    pix_block = ""
+    if cfg.pix_key:
+        holder = f" — {cfg.pix_holder}" if cfg.pix_holder else ""
+        pix_block = (
+            f"\nDADOS DO PIX (compartilhe SOMENTE quando o cliente escolher pagar com PIX):\n"
+            f"  chave: {cfg.pix_key}{holder}\n"
+        )
+
+    DOW_LABELS = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
+    closed = cfg.closed_weekdays or []
+    closed_block = ""
+    if closed:
+        closed_names = ", ".join(DOW_LABELS[d] for d in closed if 0 <= d <= 6)
+        closed_block = f"\nFECHADO: {closed_names}. Nesses dias responda: \"{cfg.off_hours_message}\""
+
+    bot_name = cfg.bot_name or "Bia"
+
+    return f"""Você é a {bot_name}, atendente virtual de uma pizzaria brasileira.
+Seja calorosa, natural e informal (use "você", "beleza", "fica tranquilo") —
+NUNCA soe robótica ou use listas numeradas de menu. Responda sempre em português
+brasileiro coloquial. Quando se apresentar, diga "Aqui é a {bot_name}".
 
 CUMPRIMENTO PADRÃO (use só na primeira interação): {cfg.greeting}
-HORÁRIO: {cfg.working_hours_start}h às {cfg.working_hours_end}h. Fora desse horário responda: "{cfg.off_hours_message}"
+HORÁRIO: {cfg.working_hours_start}h às {cfg.working_hours_end}h. Fora desse horário responda: "{cfg.off_hours_message}"{closed_block}
 LIMITE DE ITENS POR PEDIDO: {cfg.max_items_per_order}
 
 REGRAS IMPORTANTES:
@@ -306,7 +324,7 @@ REGRAS IMPORTANTES:
 - Se o bairro não for atendido, avise que não entregamos lá e ofereça retirada.
 {cpf_rule}
 {repeat_rule}
-
+{pix_block}
 {cfg.extra_system_prompt or ''}
 
 ESTADO ATUAL: {state.get('state', 'greeting')}
@@ -476,6 +494,43 @@ async def process_incoming(
         state["customer_name"] = customer.name
 
     cfg = await _get_bot_config(db)
+
+    # Hard off-hours / closed-day gate — short-circuits BEFORE any GPT call.
+    # Saves OpenAI tokens and responds instantly when the pizzaria is closed.
+    # Compares in São Paulo local time (the relevant zone for Marcio).
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import datetime
+        now_local = datetime.now(ZoneInfo("America/Sao_Paulo"))
+    except Exception:
+        from datetime import datetime
+        now_local = datetime.utcnow()
+
+    closed_today = (now_local.weekday() in (cfg.closed_weekdays or []))
+    h_start = int(cfg.working_hours_start or 0)
+    h_end = int(cfg.working_hours_end or 24)
+    out_of_hours = not (h_start <= now_local.hour < h_end)
+
+    if closed_today or out_of_hours:
+        msg = cfg.off_hours_message or "Estamos fechados no momento."
+        # Persist + broadcast as a normal turn so the admin sees it
+        await _persist_message(
+            db, phone=phone, customer_id=customer.id,
+            role=MessageRole.user, content=text, is_audio=is_audio,
+        )
+        await _persist_message(
+            db, phone=phone, customer_id=customer.id,
+            role=MessageRole.assistant, content=msg,
+        )
+        try:
+            from app.services.websocket import manager
+            await manager.broadcast(
+                "chat_message",
+                {"phone": phone, "role": "assistant", "content": msg, "is_audio": False},
+            )
+        except Exception:
+            pass
+        return msg
 
     # LGPD: send the privacy notice once per phone, before anything else.
     # This is the FIRST message the bot ever sends to a new customer.

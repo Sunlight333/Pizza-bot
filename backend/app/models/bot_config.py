@@ -1,6 +1,7 @@
 from typing import Optional
 
 from sqlalchemy import Boolean, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -14,6 +15,10 @@ class BotConfig(Base, TimestampMixin):
     __tablename__ = "bot_config"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+
+    # Persona — name the bot uses to introduce itself ("Oi, sou a Bia da pizzaria...")
+    bot_name: Mapped[str] = mapped_column(String(40), default="Bia", nullable=False)
+
     greeting: Mapped[str] = mapped_column(
         Text,
         default="Oi! Boa noite — sou o atendente virtual da pizzaria. Como posso ajudar?",
@@ -22,11 +27,20 @@ class BotConfig(Base, TimestampMixin):
     enable_repeat_last_order: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     working_hours_start: Mapped[int] = mapped_column(Integer, default=18, nullable=False)
     working_hours_end: Mapped[int] = mapped_column(Integer, default=23, nullable=False)
+
+    # Days the pizzaria is CLOSED. Python weekday convention: Mon=0, Sun=6.
+    # Marcio's pizzaria is closed Monday → [0]. Default empty (open every day).
+    closed_weekdays: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+
     off_hours_message: Mapped[str] = mapped_column(
         Text,
         default="No momento estamos fechados. Funcionamos das 18h às 23h. 🍕",
         nullable=False,
     )
+
+    # PIX information surfaced to the customer when they pick PIX as payment method.
+    pix_key: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    pix_holder: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     max_items_per_order: Mapped[int] = mapped_column(Integer, default=15, nullable=False)
     ask_cpf: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     tts_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

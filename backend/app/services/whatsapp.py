@@ -151,5 +151,58 @@ class EvolutionClient:
         except Exception as e:
             return {"error": str(e)}
 
+    async def fetch_instance(self) -> dict:
+        """
+        Return the instance row from Evolution including the paired number,
+        owner JID, profile name/picture, and connection status. Used by the
+        admin panel to display 'who's currently linked'.
+        """
+        try:
+            data = await self._request(
+                "GET", f"/instance/fetchInstances?instanceName={self._instance}"
+            )
+        except Exception as e:
+            return {"error": str(e)}
+        if isinstance(data, list) and data:
+            return data[0]
+        return data if isinstance(data, dict) else {}
+
+    async def logout_instance(self) -> dict:
+        """
+        Disconnect the currently paired WhatsApp number. The instance row
+        survives, so the operator can scan a fresh QR with a different phone
+        without recreating the integration.
+        """
+        try:
+            return await self._request("DELETE", f"/instance/logout/{self._instance}")
+        except Exception as e:
+            return {"error": str(e)}
+
+    async def delete_instance(self) -> dict:
+        """Hard-delete the instance — clears all session data."""
+        try:
+            return await self._request("DELETE", f"/instance/delete/{self._instance}")
+        except Exception as e:
+            return {"error": str(e)}
+
+    async def create_instance(self) -> dict:
+        """
+        Create the instance with the project's standard config.
+        Idempotent: if Evolution returns 403 'already exists' we treat it as success.
+        """
+        payload = {
+            "instanceName": self._instance,
+            "qrcode": True,
+            "integration": "WHATSAPP-BAILEYS",
+        }
+        try:
+            return await self._request("POST", "/instance/create", json=payload)
+        except httpx.HTTPStatusError as e:
+            if e.response is not None and e.response.status_code in (403, 409):
+                return {"status": "already_exists"}
+            return {"error": str(e)}
+        except Exception as e:
+            return {"error": str(e)}
+
 
 client = EvolutionClient()

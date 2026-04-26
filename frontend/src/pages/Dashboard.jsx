@@ -20,6 +20,7 @@ import LiveOrderFeed from '@/components/dashboard/LiveOrderFeed'
 import PeakHoursHeatmap from '@/components/dashboard/PeakHoursHeatmap'
 import { ordersApi } from '@/services/orders'
 import { useLiveOrders } from '@/hooks/useLiveOrders'
+import { ASSETS } from '@/utils/assets'
 
 const brl = (n) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0)
@@ -80,6 +81,29 @@ export default function Dashboard() {
   return (
     <AnimatedPage className="space-y-4 relative">
       <ParticleBackground className="opacity-50" />
+
+      {/* Hero banner */}
+      <div className="relative h-32 md:h-40 rounded-2xl overflow-hidden border border-glass-border">
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url(${ASSETS.backgrounds.dashboardHero})` }}
+        />
+        <div
+          aria-hidden="true"
+          className="absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(90deg, rgba(15,15,35,0.85) 0%, rgba(15,15,35,0.55) 60%, rgba(15,15,35,0.2) 100%)',
+          }}
+        />
+        <div className="relative h-full flex flex-col justify-center px-6">
+          <h2 className="font-display text-2xl md:text-3xl">Olá, bem-vindo de volta 👋</h2>
+          <p className="text-white/60 text-sm mt-1 max-w-md">
+            Acompanhe pedidos em tempo real, receita do dia e o status da integração com Datacaixa e WhatsApp.
+          </p>
+        </div>
+      </div>
 
       <HealthWidget />
 

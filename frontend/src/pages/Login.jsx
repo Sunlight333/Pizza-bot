@@ -4,9 +4,9 @@ import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { Lock, User as UserIcon } from 'lucide-react'
 
-import LoginPizza from '@/components/3d/LoginPizza'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
+import { ASSETS } from '@/utils/assets'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -47,19 +47,42 @@ export default function Login() {
 
   return (
     <div className="relative h-screen flex items-center justify-center overflow-hidden">
-      <div className="absolute inset-0 -z-10">
-        <LoginPizza />
-      </div>
-
+      {/* Layered backdrop: photo → tonal gradient → tiled pattern → R3F (or its poster fallback) */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-30 bg-cover bg-center"
+        style={{ backgroundImage: `url(${ASSETS.backgrounds.login})` }}
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-20"
+        style={{
+          background:
+            'linear-gradient(135deg, rgba(15,15,35,0.85) 0%, rgba(15,15,35,0.7) 60%, rgba(255,107,53,0.15) 100%)',
+        }}
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-20 opacity-15 mix-blend-overlay"
+        style={{
+          backgroundImage: `url(${ASSETS.backgrounds.authPattern})`,
+          backgroundSize: '320px',
+          backgroundRepeat: 'repeat',
+        }}
+      />
       <motion.form
         onSubmit={onSubmit}
         initial={{ opacity: 0, y: 20, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="glass-card w-full max-w-sm p-8 mx-4 relative z-10"
+        className="glass-card w-full max-w-sm p-8 mx-4 relative z-10 bg-bg-card/85 backdrop-blur-2xl"
       >
         <div className="text-center mb-8">
-          <div className="text-4xl mb-2">🍕</div>
+          <img
+            src={ASSETS.brand.logo}
+            alt="Pizzabot"
+            className="mx-auto w-16 h-16 rounded-2xl shadow-glow-primary mb-3 ring-1 ring-glass-border"
+          />
           <h1 className="font-display text-2xl">Pizzabot</h1>
           <p className="text-white/50 text-sm mt-1">Painel administrativo</p>
         </div>
