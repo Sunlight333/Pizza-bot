@@ -19,3 +19,15 @@ export function getApiBase() {
 export function getWsBase() {
   return getApiBase().replace(/^http/, 'ws')
 }
+
+/**
+ * Resolve a stored image URL for display. The /media/ tree is served by the
+ * backend, not the frontend dev server, so relative /media/* paths must be
+ * prefixed with the API base to load. Other paths (/menu/*, /images/*, full
+ * URLs) are returned unchanged.
+ */
+export function resolveMediaUrl(url) {
+  if (!url) return url
+  if (url.startsWith('/media/')) return `${getApiBase()}${url}`
+  return url
+}

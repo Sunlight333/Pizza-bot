@@ -10,6 +10,8 @@ import CategoryManager from '@/components/menu/CategoryManager'
 import { SkeletonCard } from '@/components/ui/Skeleton'
 import { menuApi } from '@/services/menu'
 import { categoryImage, categoryHero, pizzaImage, ASSETS } from '@/utils/assets'
+import { resolveMediaUrl } from '@/utils/apiUrl'
+import { HIDDEN_IMAGE } from '@/components/menu/ProductModal'
 
 const brl = (n) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0)
@@ -213,68 +215,84 @@ export default function Menu() {
           {q ? `Nenhum produto encontrado para "${search}"` : 'Nenhum produto nesta categoria'}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="flex flex-wrap gap-4 items-start">
           {filtered.map((p, i) => {
             const catName = categories.find((c) => c.id === p.category_id)?.name
-            const thumbSrc = p.image_url || pizzaImage(p.name, catName)
+            const imageHidden = p.image_url === HIDDEN_IMAGE
+            const heroSrc = imageHidden
+              ? null
+              : resolveMediaUrl(p.image_url) || pizzaImage(p.name, catName)
             return (
             <motion.div
               key={p.id}
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.03 }}
-              className="glass-card p-4 hover:border-primary/30 transition-all hover:-translate-y-0.5"
+              className="glass-card overflow-hidden hover:border-primary/30 transition-all hover:-translate-y-0.5 flex flex-col w-64 h-[32rem] shrink-0"
             >
-              <div className="flex items-start gap-3 mb-3">
-                <img
-                  src={thumbSrc}
-                  alt=""
-                  loading="lazy"
-                  onError={(e) => {
-                    // Only swap to the placeholder once — don't loop if the
-                    // placeholder itself fails (which would re-fire onError forever
-                    // and look like a shaking thumbnail).
-                    if (e.currentTarget.dataset.fallback === '1') return
-                    e.currentTarget.dataset.fallback = '1'
-                    e.currentTarget.src = ASSETS.menu.productPlaceholder
-                  }}
-                  className="w-12 h-12 rounded-lg object-cover ring-1 ring-glass-border shrink-0 bg-bg/50"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <h3 className="font-medium truncate">{p.name}</h3>
-                    {missingIds.has(p.id) && (
-                      <span title="Sem NCM/CFOP/CSOSN — Datacaixa pode rejeitar">
-                        <AlertTriangle size={12} className="text-yellow-400 shrink-0" />
-                      </span>
-                    )}
+              <div className="relative w-full h-64 shrink-0 bg-bg/50">
+                {imageHidden ? (
+                  <div className="absolute inset-0 flex items-center justify-center text-white/30 text-xs">
+                    sem imagem
                   </div>
-                  {p.description && (
-                    <p className="text-xs text-white/50 mt-1 line-clamp-2">{p.description}</p>
-                  )}
-                </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${p.is_active ? 'bg-success/20 text-success' : 'bg-white/10 text-white/40'}`}>
+                ) : (
+                  <img
+                    src={heroSrc}
+                    alt=""
+                    loading="lazy"
+                    onError={(e) => {
+                      // Only swap to the placeholder once — don't loop if the
+                      // placeholder itself fails (which would re-fire onError forever
+                      // and look like a shaking thumbnail).
+                      if (e.currentTarget.dataset.fallback === '1') return
+                      e.currentTarget.dataset.fallback = '1'
+                      e.currentTarget.src = ASSETS.menu.productPlaceholder
+                    }}
+                    className="w-full h-full object-cover"
+                  />
+                )}
+                <span
+                  className={`absolute top-2 right-2 text-xs px-2 py-0.5 rounded-full backdrop-blur-sm ${
+                    p.is_active
+                      ? 'bg-success/30 text-success ring-1 ring-success/40'
+                      : 'bg-black/40 text-white/60 ring-1 ring-white/20'
+                  }`}
+                >
                   {p.is_active ? 'Ativo' : 'Inativo'}
                 </span>
               </div>
-              <div className="space-y-1 mb-3">
-                {(p.sizes || []).map((s) => (
-                  <div key={s.size} className="flex justify-between text-sm">
-                    <span className="text-white/60">{s.size}</span>
-                    <span className="text-accent font-medium">{brl(s.price)}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-2 border-t border-glass-border pt-3">
-                <button onClick={() => onEdit(p)} className="btn-ghost text-xs py-1.5 flex-1 flex items-center justify-center gap-1">
-                  <Edit2 size={12} /> Editar
-                </button>
-                <button
-                  onClick={() => { if (confirm('Desativar este produto?')) deleteMut.mutate(p.id) }}
-                  className="btn-ghost text-xs py-1.5 px-3 hover:text-red-400"
-                >
-                  <Trash2 size={14} />
-                </button>
+
+              <div className="p-4 flex-1 min-h-0 flex flex-col overflow-hidden">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <h3 className="font-medium truncate">{p.name}</h3>
+                  {missingIds.has(p.id) && (
+                    <span title="Sem NCM/CFOP/CSOSN — Datacaixa pode rejeitar">
+                      <AlertTriangle size={12} className="text-yellow-400 shrink-0" />
+                    </span>
+                  )}
+                </div>
+                {p.description && (
+                  <p className="text-xs text-white/50 mb-3 line-clamp-2">{p.description}</p>
+                )}
+                <div className="space-y-1 mb-3">
+                  {(p.sizes || []).map((s) => (
+                    <div key={s.size} className="flex justify-between text-sm">
+                      <span className="text-white/60">{s.size}</span>
+                      <span className="text-accent font-medium">{brl(s.price)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2 border-t border-glass-border pt-3 mt-auto">
+                  <button onClick={() => onEdit(p)} className="btn-ghost text-xs py-1.5 flex-1 flex items-center justify-center gap-1">
+                    <Edit2 size={12} /> Editar
+                  </button>
+                  <button
+                    onClick={() => { if (confirm('Desativar este produto?')) deleteMut.mutate(p.id) }}
+                    className="btn-ghost text-xs py-1.5 px-3 hover:text-red-400"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             </motion.div>
           )})}

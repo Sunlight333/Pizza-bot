@@ -54,3 +54,6 @@ bridge/dist/
 backups/
 *.dump
 *.sql.gz
+
+# Uploaded media (product photos uploaded via the admin UI live here)
+backend/media/

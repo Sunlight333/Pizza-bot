@@ -1,9 +1,11 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
@@ -86,6 +88,13 @@ app.include_router(bot_config.router, prefix="/api/bot/config", tags=["bot"])
 app.include_router(conversations.router, prefix="/api/conversations", tags=["conversations"])
 app.include_router(evolution.router, prefix="/api/evolution", tags=["evolution"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+
+# Uploaded product photos (see /api/menu/products/upload-image). The mount lives
+# next to the API so /media/products/<file>.jpg is served by the same origin
+# and stored URLs work without CORS or extra config.
+MEDIA_ROOT = Path(__file__).resolve().parent.parent / "media"
+(MEDIA_ROOT / "products").mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=MEDIA_ROOT), name="media")
 
 
 @app.get("/")

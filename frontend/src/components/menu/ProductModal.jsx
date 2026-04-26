@@ -1,9 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Plus, Trash2, RotateCcw } from 'lucide-react'
+import { X, Plus, Trash2, RotateCcw, Upload, Camera, EyeOff, Eye, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { pizzaImage, ASSETS } from '@/utils/assets'
+import { resolveMediaUrl } from '@/utils/apiUrl'
+import { menuApi } from '@/services/menu'
+
+// Sentinel stored in image_url when the operator chose to suppress the image
+// entirely (no auto fallback, no custom photo). Kept short so it fits the
+// String(500) column with room to spare.
+export const HIDDEN_IMAGE = '__hidden__'
 
 const empty = {
   category_id: '',
@@ -28,6 +35,9 @@ const empty = {
 export default function ProductModal({ open, onClose, onSave, product, categories }) {
   const [data, setData] = useState(empty)
   const [showTax, setShowTax] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const uploadInputRef = useRef(null)
+  const cameraInputRef = useRef(null)
 
   useEffect(() => {
     if (product) {
@@ -36,6 +46,26 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
       setData(empty)
     }
   }, [product, open])
+
+  const handleImageFile = async (file) => {
+    if (!file) return
+    if (!file.type?.startsWith('image/')) {
+      toast.error('Selecione um arquivo de imagem')
+      return
+    }
+    setUploading(true)
+    try {
+      const { url } = await menuApi.uploadImage(file)
+      set('image_url', url)
+      toast.success('Foto carregada')
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Falha ao enviar imagem')
+    } finally {
+      setUploading(false)
+      if (uploadInputRef.current) uploadInputRef.current.value = ''
+      if (cameraInputRef.current) cameraInputRef.current.value = ''
+    }
+  }
 
   const set = (k, v) => setData((d) => ({ ...d, [k]: v }))
 
@@ -158,48 +188,125 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
               {(() => {
                 const catName = categories.find((c) => c.id === Number(data.category_id))?.name
                 const autoSrc = pizzaImage(data.name, catName)
-                const usingAuto = !data.image_url
-                const previewSrc = data.image_url || autoSrc
+                const isHidden = data.image_url === HIDDEN_IMAGE
+                const isCustom = !!data.image_url && !isHidden
+                const previewSrc = isCustom ? resolveMediaUrl(data.image_url) : autoSrc
+                const status = isHidden
+                  ? 'Imagem oculta — não aparece no cardápio nem nas mensagens.'
+                  : isCustom
+                    ? 'Foto personalizada — sobrescreve a automática.'
+                    : `Automática via pizzaImage("${data.name || '…'}").`
                 return (
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-xs text-white/50">Foto</label>
-                      {!usingAuto && (
+                      <div className="flex items-center gap-1">
+                        {isCustom && (
+                          <button
+                            onClick={() => set('image_url', '')}
+                            className="btn-ghost text-xs py-1 px-2 flex items-center gap-1"
+                            title="Voltar para a foto automática (pizzaImage)"
+                          >
+                            <RotateCcw size={12} /> Automática
+                          </button>
+                        )}
                         <button
-                          onClick={() => set('image_url', '')}
+                          onClick={() =>
+                            set('image_url', isHidden ? '' : HIDDEN_IMAGE)
+                          }
                           className="btn-ghost text-xs py-1 px-2 flex items-center gap-1"
-                          title="Voltar para a foto automática (pizzaImage)"
+                          title={
+                            isHidden
+                              ? 'Mostrar a imagem novamente'
+                              : 'Esconder a imagem (nem a automática nem a personalizada serão exibidas)'
+                          }
                         >
-                          <RotateCcw size={12} /> Usar automática
+                          {isHidden ? (
+                            <>
+                              <Eye size={12} /> Mostrar
+                            </>
+                          ) : (
+                            <>
+                              <EyeOff size={12} /> Ocultar
+                            </>
+                          )}
                         </button>
-                      )}
-                    </div>
-                    <div className="flex gap-3 items-start">
-                      <img
-                        src={previewSrc}
-                        alt=""
-                        onError={(e) => {
-                          if (e.currentTarget.dataset.fallback === '1') return
-                          e.currentTarget.dataset.fallback = '1'
-                          e.currentTarget.src = ASSETS.menu.productPlaceholder
-                        }}
-                        className="w-20 h-20 rounded-lg object-cover ring-1 ring-glass-border shrink-0 bg-bg/50"
-                      />
-                      <div className="flex-1">
-                        <input
-                          type="text"
-                          placeholder="/menu/savory/...jpeg ou URL completa (deixe vazio para foto automática)"
-                          value={data.image_url || ''}
-                          onChange={(e) => set('image_url', e.target.value)}
-                          className="input-field text-xs"
-                        />
-                        <p className="text-[10px] text-white/40 mt-1.5 leading-snug">
-                          {usingAuto
-                            ? `Automática via pizzaImage("${data.name || '…'}").`
-                            : 'Foto personalizada — sobrescreve a automática.'}
-                        </p>
                       </div>
                     </div>
+
+                    <div className="relative w-full aspect-square max-h-72 rounded-xl overflow-hidden ring-1 ring-glass-border bg-bg/50 mb-3">
+                      {isHidden ? (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center text-white/40 gap-2">
+                          <EyeOff size={36} />
+                          <span className="text-xs">Imagem oculta</span>
+                        </div>
+                      ) : (
+                        <img
+                          src={previewSrc}
+                          alt=""
+                          onError={(e) => {
+                            if (e.currentTarget.dataset.fallback === '1') return
+                            e.currentTarget.dataset.fallback = '1'
+                            e.currentTarget.src = ASSETS.menu.productPlaceholder
+                          }}
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                      {!isCustom && !isHidden && (
+                        <span className="absolute top-2 left-2 text-[10px] uppercase tracking-wide bg-black/60 text-white/80 rounded px-2 py-0.5 backdrop-blur-sm">
+                          Automática
+                        </span>
+                      )}
+                      {uploading && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                          <Loader2 size={28} className="animate-spin text-white" />
+                        </div>
+                      )}
+                    </div>
+
+                    <input
+                      ref={uploadInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handleImageFile(e.target.files?.[0])}
+                    />
+                    <input
+                      ref={cameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={(e) => handleImageFile(e.target.files?.[0])}
+                    />
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <button
+                        type="button"
+                        onClick={() => uploadInputRef.current?.click()}
+                        disabled={uploading}
+                        className="btn-ghost text-xs py-2 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Upload size={14} /> Carregar do dispositivo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => cameraInputRef.current?.click()}
+                        disabled={uploading}
+                        className="btn-ghost text-xs py-2 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Camera size={14} /> Tirar foto
+                      </button>
+                    </div>
+
+                    <input
+                      type="text"
+                      placeholder="/menu/savory/...jpeg ou URL completa (deixe vazio para foto automática)"
+                      value={isHidden ? '' : data.image_url || ''}
+                      disabled={isHidden}
+                      onChange={(e) => set('image_url', e.target.value)}
+                      className="input-field text-xs disabled:opacity-50"
+                    />
+                    <p className="text-[10px] text-white/40 mt-1.5 leading-snug">{status}</p>
                   </div>
                 )
               })()}

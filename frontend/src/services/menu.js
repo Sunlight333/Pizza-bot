@@ -22,4 +22,13 @@ export const menuApi = {
       })
       .then((r) => r.data)
   },
+  uploadImage: (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return api
+      .post('/api/menu/products/upload-image', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data)
+  },
 }

@@ -1,5 +1,8 @@
 import csv
 import io
+import mimetypes
+import uuid
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -108,6 +111,45 @@ async def list_products(
 # FastAPI doesn't parse them as integer IDs.
 
 TAX_CSV_COLUMNS = ("name", "ncm", "cfop", "csosn", "cest", "origin_code", "ibpt_code", "datacaixa_code")
+
+ALLOWED_IMAGE_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
+MAX_IMAGE_BYTES = 8 * 1024 * 1024  # 8 MB
+
+PRODUCT_MEDIA_DIR = Path(__file__).resolve().parents[3] / "media" / "products"
+
+
+@router.post("/products/upload-image")
+async def upload_product_image(file: UploadFile = File(...)):
+    """
+    Save an uploaded product photo (camera capture or device upload) to the
+    media directory and return its public URL. The caller persists the URL
+    in the product's image_url field via the regular update endpoint.
+    """
+    ctype = (file.content_type or "").lower()
+    ext = ALLOWED_IMAGE_TYPES.get(ctype)
+    if not ext:
+        # Some browsers send octet-stream from camera capture — fall back to
+        # the filename's extension when the MIME type is missing/generic.
+        guessed, _ = mimetypes.guess_type(file.filename or "")
+        ext = ALLOWED_IMAGE_TYPES.get((guessed or "").lower())
+    if not ext:
+        raise HTTPException(400, "Unsupported image type (use jpg/png/webp/gif)")
+
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(400, "Empty file")
+    if len(contents) > MAX_IMAGE_BYTES:
+        raise HTTPException(400, f"File too large (max {MAX_IMAGE_BYTES // (1024 * 1024)} MB)")
+
+    PRODUCT_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"{uuid.uuid4().hex}{ext}"
+    (PRODUCT_MEDIA_DIR / name).write_bytes(contents)
+    return {"url": f"/media/products/{name}"}
 
 
 @router.post("/products/tax-import")
