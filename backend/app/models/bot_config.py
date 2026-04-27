@@ -21,7 +21,7 @@ class BotConfig(Base, TimestampMixin):
 
     greeting: Mapped[str] = mapped_column(
         Text,
-        default="Oi! Boa noite — sou o atendente virtual da pizzaria. Como posso ajudar?",
+        default="Oi! Tudo bem? Em que posso te ajudar hoje? 🍕",
         nullable=False,
     )
     enable_repeat_last_order: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

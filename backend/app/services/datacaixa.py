@@ -82,7 +82,10 @@ async def generate_order_file(db: AsyncSession, order_id: int) -> str:
     observation = _clean(" | ".join(obs_bits))
 
     lines: list[str] = []
-    lines.append(f"PEDIDO|{customer_name}|{cpf}||{observation}|")
+    # Seller is a fixed identifier ("Bot") for fiscal/operational tracking inside
+    # Datacaixa — NOT the bot's persona name from BotConfig (e.g. "Bia"), which
+    # is customer-facing only.
+    lines.append(f"PEDIDO|{customer_name}|{cpf}|Bot|{observation}|")
 
     products = await _load_product_tax(db, [i.product_id for i in order.items if i.product_id])
 

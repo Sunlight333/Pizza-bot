@@ -36,6 +36,12 @@ def _server_error():
     return httpx.Response(500, text="boom", request=req)
 
 
+# These tests target _request's retry mechanism directly. send_text wraps
+# _request with a presence call + a 2-second compose pause for humanisation,
+# which would just add noise here — exercising _request keeps the tests
+# focused and resilient to changes in the send_text choreography.
+
+
 @pytest.mark.asyncio
 async def test_retries_on_5xx_then_succeeds(monkeypatch):
     fake = _FakeAsyncClient([_server_error(), _ok_response()])
@@ -46,7 +52,7 @@ async def test_retries_on_5xx_then_succeeds(monkeypatch):
     monkeypatch.setattr(wa_mod.asyncio, "sleep", _no_sleep)
 
     client = EvolutionClient()
-    result = await client.send_text("5511", "hi")
+    result = await client._request("POST", "/x", json={})
     assert result == {"ok": True}
     assert fake.calls == 2
 
@@ -64,7 +70,7 @@ async def test_retries_on_network_error(monkeypatch):
     monkeypatch.setattr(wa_mod.asyncio, "sleep", _no_sleep)
 
     client = EvolutionClient()
-    result = await client.send_text("5511", "hi")
+    result = await client._request("POST", "/x", json={})
     assert result == {"ok": True}
     assert fake.calls == 2
 
@@ -80,5 +86,5 @@ async def test_gives_up_after_max_retries(monkeypatch):
 
     client = EvolutionClient()
     with pytest.raises(httpx.HTTPStatusError):
-        await client.send_text("5511", "hi")
+        await client._request("POST", "/x", json={})
     assert fake.calls == EvolutionClient.MAX_RETRIES

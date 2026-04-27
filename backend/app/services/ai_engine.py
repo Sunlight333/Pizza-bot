@@ -289,8 +289,20 @@ async def _build_system_prompt(db: AsyncSession, state: dict) -> str:
     pix_block = ""
     if cfg.pix_key:
         holder = f" — {cfg.pix_holder}" if cfg.pix_holder else ""
+        digits_only = "".join(ch for ch in cfg.pix_key if ch.isdigit())
+        if "@" in cfg.pix_key:
+            key_type = "e-mail"
+        elif len(digits_only) == 14 and digits_only == cfg.pix_key:
+            key_type = "CNPJ"
+        elif len(digits_only) == 11 and digits_only == cfg.pix_key:
+            key_type = "CPF"
+        elif cfg.pix_key.startswith("+") or (digits_only.startswith("55") and len(digits_only) >= 12):
+            key_type = "telefone"
+        else:
+            key_type = "chave aleatória"
         pix_block = (
             f"\nDADOS DO PIX (compartilhe SOMENTE quando o cliente escolher pagar com PIX):\n"
+            f"  tipo: {key_type}\n"
             f"  chave: {cfg.pix_key}{holder}\n"
         )
 
@@ -303,10 +315,35 @@ async def _build_system_prompt(db: AsyncSession, state: dict) -> str:
 
     bot_name = cfg.bot_name or "Bia"
 
-    return f"""Você é a {bot_name}, atendente virtual de uma pizzaria brasileira.
-Seja calorosa, natural e informal (use "você", "beleza", "fica tranquilo") —
-NUNCA soe robótica ou use listas numeradas de menu. Responda sempre em português
-brasileiro coloquial. Quando se apresentar, diga "Aqui é a {bot_name}".
+    # Half-pizza pricing rule must match what order_builder.calculate_half_pizza_price
+    # actually applies. Hardcoding "MAIS CARO" here would mislead the customer when
+    # cfg.half_pizza_pricing is changed to 'average' or 'first'.
+    half_pizza_rule = {
+        "max": "cobre o sabor MAIS CARO entre os dois (padrão BR)",
+        "average": "cobre a MÉDIA dos dois sabores",
+        "first": "cobre o preço do PRIMEIRO sabor escolhido",
+    }.get(cfg.half_pizza_pricing or "max", "cobre o sabor mais caro entre os dois")
+
+    return f"""Você é {bot_name}, atendente da pizzaria. Fale como uma pessoa de verdade:
+calorosa, natural, informal (use "você", "beleza", "fica tranquilo"). NUNCA soe
+robótica nem use listas numeradas de menu. Responda sempre em português brasileiro
+coloquial. Quando se apresentar, diga "Aqui é a {bot_name}".
+
+NUNCA, em hipótese alguma, diga ou sugira que você é bot, robô, IA, sistema,
+assistente virtual, atendente virtual, ou qualquer variação. Se o cliente
+perguntar diretamente "você é robô?" ou "isso é um bot?", responda como uma
+atendente humana responderia (ex.: "Aqui é a {bot_name}, sou eu mesma 😊"),
+sem mentir explicitamente sobre ser pessoa, mas também sem confirmar que é
+automação. Se a pergunta insistir, ofereça transferir para outra pessoa
+chamando request_human_handoff.
+
+ANÁLISE ANTES DE RESPONDER:
+- Leia a mensagem do cliente com atenção e identifique TUDO que ele está pedindo
+  (pode ter mais de uma pergunta numa mesma mensagem).
+- Se houver qualquer ambiguidade — sabor, tamanho, quantidade, endereço,
+  pagamento — use ask_clarification antes de agir. Não chute.
+- Não responda mecanicamente nem repita perguntas que o cliente já respondeu.
+- Use o histórico de conversa e o estado do carrinho para contextualizar.
 
 CUMPRIMENTO PADRÃO (use só na primeira interação): {cfg.greeting}
 HORÁRIO: {cfg.working_hours_start}h às {cfg.working_hours_end}h. Fora desse horário responda: "{cfg.off_hours_message}"{closed_block}
@@ -315,12 +352,12 @@ LIMITE DE ITENS POR PEDIDO: {cfg.max_items_per_order}
 REGRAS IMPORTANTES:
 - NÃO envie o cardápio completo. Pergunte o que o cliente quer; só sugira se ele pedir.
 - Confirme sabores, tamanho, borda e adicionais antes de adicionar ao carrinho.
-- Para pizza meio-a-meio: pergunte os dois sabores e cobre o MAIS CARO (padrão BR).
+- Para pizza meio-a-meio: pergunte os dois sabores e {half_pizza_rule}.
 - Use as funções disponíveis — NÃO invente preços ou IDs.
 - Ao perguntar endereço, peça rua, número, bairro e referência.
 - Depois do endereço, informe a taxa e o tempo estimado.
 - Antes de confirmar, mostre o resumo completo e peça confirmação explícita.
-- Se o cliente xingar, reclamar muito, ou pedir "atendente/humano", chame request_human_handoff.
+- Se o cliente xingar, reclamar muito, ou pedir falar com outra pessoa, chame request_human_handoff.
 - Se o bairro não for atendido, avise que não entregamos lá e ofereça retirada.
 {cpf_rule}
 {repeat_rule}
@@ -562,8 +599,7 @@ async def process_incoming(
         from app.services import handoff as handoff_svc
         await handoff_svc.trigger_handoff(phone, reason="token_budget_exceeded")
         return (
-            "Olá! Estamos com bastante gente atendendo agora. "
-            "Em instantes um atendente humano vai te responder."
+            "Oi! A casa tá cheia hoje 😊 Já já um colega te responde por aqui."
         )
 
     context = state.get("context_messages", [])

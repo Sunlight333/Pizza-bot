@@ -17,6 +17,10 @@ class EvolutionClient:
     MAX_RETRIES = 3
     INITIAL_BACKOFF = 0.5  # seconds — doubles each retry
 
+    # Humanisation: show "typing..." for ~2 seconds before each text reply lands.
+    # The bot must not feel instant. This is a hard requirement, not a tunable.
+    COMPOSE_DELAY_MS = 2000
+
     def __init__(self) -> None:
         self._base = settings.evolution_api_url.rstrip("/")
         self._instance = settings.evolution_instance_name
@@ -62,6 +66,39 @@ class EvolutionClient:
         raise last_exc  # pragma: no cover
 
     async def send_text(self, phone: str, text: str) -> dict:
+        """
+        Send a text message with a ~2-second human-like pause:
+          1. mark presence as "composing" (typing indicator) for COMPOSE_DELAY_MS
+          2. wait the same window in Python so the indicator stays visible
+             until the message actually lands
+          3. send the message
+
+        The wait also doubles as a settle window for WhatsApp's E2EE pre-key
+        handshake — Baileys-based clients sometimes ship messages before the
+        recipient's pre-key bundle is fetched, leaving the recipient stuck
+        on "Waiting for this message".
+        """
+        compose_seconds = self.COMPOSE_DELAY_MS / 1000
+
+        # 1. presence (best-effort; never block the send if presence fails)
+        try:
+            await self._request(
+                "POST",
+                f"/chat/sendPresence/{self._instance}",
+                json={
+                    "number": phone,
+                    "presence": "composing",
+                    "delay": self.COMPOSE_DELAY_MS,
+                },
+            )
+        except Exception as e:
+            log.debug("presence composing failed (non-fatal): %s", e)
+
+        # 2. wait the full compose window before issuing the send
+        await asyncio.sleep(compose_seconds)
+
+        # 3. send the actual text — server-side `delay` is now 0 because the
+        # client-side wait already covered the typing pause.
         return await self._request(
             "POST", f"/message/sendText/{self._instance}",
             json={"number": phone, "text": text},
