@@ -16,7 +16,12 @@ from app.utils.security import hash_password
 
 
 DEFAULT_CRUSTS = ["Catupiry", "Cheddar", "Chocolate", "Sem Borda"]
-DEFAULT_EXTRAS = ["Extra Queijo", "Extra Bacon", "Extra Calabresa", "Sem Cebola"]
+DEFAULT_EXTRAS = [
+    {"name": "Extra Queijo", "price": 0},
+    {"name": "Extra Bacon", "price": 0},
+    {"name": "Extra Calabresa", "price": 0},
+    {"name": "Sem Cebola", "price": 0},
+]
 
 PIZZA_TAX = {
     "ncm": "19059090",
@@ -225,7 +230,10 @@ async def seed_products(db, cats: dict[str, int]) -> None:
                 is_pizza=True,
                 allows_half=True,
                 available_crusts=["Chocolate", "Sem Borda"],
-                available_extras=["Extra Leite Condensado", "Extra Morango"],
+                available_extras=[
+                    {"name": "Extra Leite Condensado", "price": 0},
+                    {"name": "Extra Morango", "price": 0},
+                ],
                 is_active=True,
                 **PIZZA_TAX,
             )

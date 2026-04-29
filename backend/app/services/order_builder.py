@@ -13,6 +13,7 @@ from app.services import order_service
 from app.services.menu_service import (
     build_pizza_description,
     calculate_half_pizza_price,
+    extras_price_total,
     validate_combination,
 )
 
@@ -63,6 +64,10 @@ async def add_pizza(
                 raise ValueError(f"Tamanho '{size}' indisponível para {f.name}")
             prices.append(p)
         price = max(prices)
+
+    # Paid extras (e.g. "extra queijo R$ 5") add to the unit price; free
+    # extras (cebola, requeijão) are catalogued at price 0 so they pass through.
+    price = round(price + extras_price_total(flavors[0], extras), 2)
 
     description = build_pizza_description(flavors, size, crust, extras)
     item = {

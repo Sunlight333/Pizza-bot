@@ -41,7 +41,14 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
 
   useEffect(() => {
     if (product) {
-      setData({ ...empty, ...product })
+      // Pre-migration data may store extras as plain strings; normalize so
+      // the editor below always works with {name, price} rows.
+      const extras = Array.isArray(product.available_extras)
+        ? product.available_extras.map((e) =>
+            typeof e === 'string' ? { name: e, price: 0 } : { name: e.name || '', price: Number(e.price) || 0 },
+          )
+        : []
+      setData({ ...empty, ...product, available_extras: extras })
     } else {
       setData(empty)
     }
@@ -77,6 +84,19 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
     const copy = [...data.sizes]
     copy[i] = { ...copy[i], [k]: k === 'price' ? Number(v) : v }
     set('sizes', copy)
+  }
+
+  const addExtra = () =>
+    set('available_extras', [...(data.available_extras || []), { name: '', price: 0 }])
+  const removeExtra = (i) =>
+    set(
+      'available_extras',
+      (data.available_extras || []).filter((_, idx) => idx !== i),
+    )
+  const updateExtra = (i, k, v) => {
+    const copy = [...(data.available_extras || [])]
+    copy[i] = { ...copy[i], [k]: k === 'price' ? Number(v) : v }
+    set('available_extras', copy)
   }
 
   const handleSave = async () => {
@@ -356,17 +376,64 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-white/50 mb-1 block">
-                      Adicionais disponíveis (separadas por vírgula)
-                    </label>
-                    <input
-                      type="text"
-                      value={(data.available_extras || []).join(', ')}
-                      onChange={(e) =>
-                        set('available_extras', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))
-                      }
-                      className="input-field"
-                    />
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs text-white/50">Adicionais disponíveis</label>
+                      <button
+                        onClick={addExtra}
+                        className="btn-ghost text-xs py-1 px-2 flex items-center gap-1"
+                      >
+                        <Plus size={12} /> Adicionar
+                      </button>
+                    </div>
+                    {(data.available_extras || []).length === 0 && (
+                      <p className="text-[10px] text-white/40 mb-2">
+                        Nenhum adicional. Clique em "Adicionar" para incluir.
+                      </p>
+                    )}
+                    {(data.available_extras || []).map((ex, i) => {
+                      const isFree = !ex.price || Number(ex.price) === 0
+                      return (
+                        <div key={i} className="flex gap-2 mb-2 items-center">
+                          <input
+                            type="text"
+                            placeholder="nome (ex: Cebola, Extra Bacon)"
+                            value={ex.name || ''}
+                            onChange={(e) => updateExtra(i, 'name', e.target.value)}
+                            className="input-field flex-1 text-sm"
+                          />
+                          <label className="flex items-center gap-1 text-[11px] text-white/60 select-none whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              checked={isFree}
+                              onChange={(e) =>
+                                updateExtra(i, 'price', e.target.checked ? 0 : ex.price || 1)
+                              }
+                            />
+                            Grátis
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="R$"
+                            value={isFree ? '' : ex.price}
+                            disabled={isFree}
+                            onChange={(e) => updateExtra(i, 'price', e.target.value)}
+                            className="input-field w-20 text-sm disabled:opacity-40"
+                          />
+                          <button
+                            onClick={() => removeExtra(i)}
+                            className="text-white/40 hover:text-red-400 px-1"
+                            title="Remover"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                    <p className="text-[10px] text-white/40 mt-1">
+                      Marque "Grátis" para adicionais sem custo (ex: cebola, requeijão).
+                    </p>
                   </div>
                 </>
               )}

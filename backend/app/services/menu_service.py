@@ -17,6 +17,39 @@ def _size_price(product: Product, size: str) -> Optional[float]:
     return None
 
 
+def _extra_name(entry) -> str:
+    """available_extras may hold legacy plain strings or {name, price} dicts."""
+    if isinstance(entry, dict):
+        return str(entry.get("name", ""))
+    return str(entry)
+
+
+def _extras_index(product: Product) -> dict[str, float]:
+    """Map of lowercased extra name -> price, for the catalog of a product."""
+    out: dict[str, float] = {}
+    for e in product.available_extras or []:
+        name = _extra_name(e).strip()
+        if not name:
+            continue
+        if isinstance(e, dict):
+            try:
+                price = float(e.get("price") or 0)
+            except (TypeError, ValueError):
+                price = 0.0
+        else:
+            price = 0.0
+        out[name.lower()] = price
+    return out
+
+
+def extras_price_total(product: Product, chosen: Optional[List[str]]) -> float:
+    """Sum the price of each chosen extra against the product's catalog."""
+    if not chosen:
+        return 0.0
+    idx = _extras_index(product)
+    return round(sum(idx.get(name.lower(), 0.0) for name in chosen), 2)
+
+
 def calculate_half_pizza_price(
     p1: Product, p2: Product, size: str, mode: str = "max"
 ) -> float:
@@ -103,6 +136,18 @@ async def get_menu_for_bot(db: AsyncSession) -> str:
                 lines.append(f"    ({p.description})")
             if p.is_pizza and p.allows_half:
                 lines.append("    [permite meia-a-meia]")
+            if p.available_extras:
+                parts = []
+                for e in p.available_extras:
+                    name = _extra_name(e).strip()
+                    if not name:
+                        continue
+                    price = _extras_index(p).get(name.lower(), 0.0)
+                    parts.append(
+                        name if price <= 0 else f"{name} (+R$ {price:.2f})".replace(".", ",")
+                    )
+                if parts:
+                    lines.append("    [adicionais: " + ", ".join(parts) + "]")
     return "\n".join(lines).strip()
 
 
@@ -124,7 +169,7 @@ def validate_combination(
     if crust and crust.lower() != "sem borda" and crust not in (base.available_crusts or []):
         raise ValueError(f"Borda '{crust}' indisponível para {base.name}")
     if extras:
-        allowed = set(base.available_extras or [])
+        allowed = {_extra_name(e).lower() for e in (base.available_extras or [])}
         for e in extras:
-            if e not in allowed:
+            if e.lower() not in allowed:
                 raise ValueError(f"Adicional '{e}' indisponível")
