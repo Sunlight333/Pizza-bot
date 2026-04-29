@@ -41,14 +41,22 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
 
   useEffect(() => {
     if (product) {
-      // Pre-migration data may store extras as plain strings; normalize so
-      // the editor below always works with {name, price} rows.
-      const extras = Array.isArray(product.available_extras)
-        ? product.available_extras.map((e) =>
-            typeof e === 'string' ? { name: e, price: 0 } : { name: e.name || '', price: Number(e.price) || 0 },
-          )
-        : []
-      setData({ ...empty, ...product, available_extras: extras })
+      // Pre-migration data may store extras/crusts as plain strings; normalize
+      // so both editors below always work with {name, price} rows.
+      const normalize = (arr) =>
+        Array.isArray(arr)
+          ? arr.map((e) =>
+              typeof e === 'string'
+                ? { name: e, price: 0 }
+                : { name: e.name || '', price: Number(e.price) || 0 },
+            )
+          : []
+      setData({
+        ...empty,
+        ...product,
+        available_extras: normalize(product.available_extras),
+        available_crusts: normalize(product.available_crusts),
+      })
     } else {
       setData(empty)
     }
@@ -97,6 +105,19 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
     const copy = [...(data.available_extras || [])]
     copy[i] = { ...copy[i], [k]: k === 'price' ? Number(v) : v }
     set('available_extras', copy)
+  }
+
+  const addCrust = () =>
+    set('available_crusts', [...(data.available_crusts || []), { name: '', price: 0 }])
+  const removeCrust = (i) =>
+    set(
+      'available_crusts',
+      (data.available_crusts || []).filter((_, idx) => idx !== i),
+    )
+  const updateCrust = (i, k, v) => {
+    const copy = [...(data.available_crusts || [])]
+    copy[i] = { ...copy[i], [k]: k === 'price' ? Number(v) : v }
+    set('available_crusts', copy)
   }
 
   const handleSave = async () => {
@@ -388,17 +409,64 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
               {data.is_pizza && (
                 <>
                   <div>
-                    <label className="text-xs text-white/50 mb-1 block">
-                      Bordas disponíveis (separadas por vírgula)
-                    </label>
-                    <input
-                      type="text"
-                      value={(data.available_crusts || []).join(', ')}
-                      onChange={(e) =>
-                        set('available_crusts', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))
-                      }
-                      className="input-field"
-                    />
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs text-white/50">Bordas disponíveis</label>
+                      <button
+                        onClick={addCrust}
+                        className="btn-ghost text-xs py-1 px-2 flex items-center gap-1"
+                      >
+                        <Plus size={12} /> Adicionar
+                      </button>
+                    </div>
+                    {(data.available_crusts || []).length === 0 && (
+                      <p className="text-[10px] text-white/40 mb-2">
+                        Nenhuma borda. Clique em "Adicionar" para incluir.
+                      </p>
+                    )}
+                    {(data.available_crusts || []).map((cr, i) => {
+                      const isFree = !cr.price || Number(cr.price) === 0
+                      return (
+                        <div key={i} className="flex gap-2 mb-2 items-center">
+                          <input
+                            type="text"
+                            placeholder="nome (ex: Catupiry, Sem Borda)"
+                            value={cr.name || ''}
+                            onChange={(e) => updateCrust(i, 'name', e.target.value)}
+                            className="input-field flex-1 text-sm"
+                          />
+                          <label className="flex items-center gap-1 text-[11px] text-white/60 select-none whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              checked={isFree}
+                              onChange={(e) =>
+                                updateCrust(i, 'price', e.target.checked ? 0 : cr.price || 1)
+                              }
+                            />
+                            Grátis
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="R$"
+                            value={isFree ? '' : cr.price}
+                            disabled={isFree}
+                            onChange={(e) => updateCrust(i, 'price', e.target.value)}
+                            className="input-field w-20 text-sm disabled:opacity-40"
+                          />
+                          <button
+                            onClick={() => removeCrust(i)}
+                            className="text-white/40 hover:text-red-400 px-1"
+                            title="Remover"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                    <p className="text-[10px] text-white/40 mt-1">
+                      Marque "Grátis" para bordas sem custo (ex: Sem Borda).
+                    </p>
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-2">

@@ -13,6 +13,7 @@ from app.services import order_service
 from app.services.menu_service import (
     build_pizza_description,
     calculate_half_pizza_price,
+    crust_price,
     extras_price_total,
     validate_combination,
 )
@@ -65,9 +66,15 @@ async def add_pizza(
             prices.append(p)
         price = max(prices)
 
-    # Paid extras (e.g. "extra queijo R$ 5") add to the unit price; free
-    # extras (cebola, requeijão) are catalogued at price 0 so they pass through.
-    price = round(price + extras_price_total(flavors[0], extras), 2)
+    # Paid extras (e.g. "extra queijo R$ 5") and stuffed-crust upcharges
+    # (catupiry/cheddar) add to the unit price; free options ("sem borda",
+    # cebola, requeijão) are catalogued at price 0 and pass through.
+    price = round(
+        price
+        + crust_price(flavors[0], crust)
+        + extras_price_total(flavors[0], extras),
+        2,
+    )
 
     description = build_pizza_description(flavors, size, crust, extras)
     item = {

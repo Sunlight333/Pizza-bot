@@ -39,9 +39,15 @@ class ExtraOption(BaseModel):
     price: float = 0.0
 
 
-def _normalize_extras(value):
+class CrustOption(BaseModel):
+    """Borda (stuffed crust). price=0 = no charge ("sem borda")."""
+    name: str = Field(..., min_length=1, max_length=80)
+    price: float = 0.0
+
+
+def _normalize_named_options(value):
     """
-    Pre-migration rows store extras as plain strings. Coerce each legacy
+    Pre-migration rows store options as plain strings. Coerce each legacy
     string to {name: <str>, price: 0} so ProductOut still validates while
     the migration is rolling out (or for any data missed by the backfill).
     """
@@ -56,6 +62,10 @@ def _normalize_extras(value):
     return out
 
 
+# Backwards-compat alias — older imports still call _normalize_extras.
+_normalize_extras = _normalize_named_options
+
+
 class ProductBase(BaseModel):
     category_id: int
     name: str = Field(..., min_length=1, max_length=120)
@@ -63,13 +73,13 @@ class ProductBase(BaseModel):
     sizes: List[SizePrice] = []
     is_pizza: bool = False
     allows_half: bool = False
-    available_crusts: List[str] = []
+    available_crusts: List[CrustOption] = []
     available_extras: List[ExtraOption] = []
 
-    @field_validator("available_extras", mode="before")
+    @field_validator("available_crusts", "available_extras", mode="before")
     @classmethod
-    def _coerce_extras(cls, v):
-        return _normalize_extras(v)
+    def _coerce_options(cls, v):
+        return _normalize_named_options(v)
     ncm: Optional[str] = None
     cfop: Optional[str] = None
     csosn: Optional[str] = None
@@ -92,13 +102,13 @@ class ProductUpdate(BaseModel):
     sizes: Optional[List[SizePrice]] = None
     is_pizza: Optional[bool] = None
     allows_half: Optional[bool] = None
-    available_crusts: Optional[List[str]] = None
+    available_crusts: Optional[List[CrustOption]] = None
     available_extras: Optional[List[ExtraOption]] = None
 
-    @field_validator("available_extras", mode="before")
+    @field_validator("available_crusts", "available_extras", mode="before")
     @classmethod
-    def _coerce_extras(cls, v):
-        return _normalize_extras(v)
+    def _coerce_options(cls, v):
+        return _normalize_named_options(v)
     ncm: Optional[str] = None
     cfop: Optional[str] = None
     csosn: Optional[str] = None

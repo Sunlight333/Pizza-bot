@@ -34,18 +34,18 @@ def _size_allows_half(product: Product, size: str) -> bool:
     return bool(product.allows_half)
 
 
-def _extra_name(entry) -> str:
-    """available_extras may hold legacy plain strings or {name, price} dicts."""
+def _option_name(entry) -> str:
+    """available_extras / available_crusts may hold legacy plain strings."""
     if isinstance(entry, dict):
         return str(entry.get("name", ""))
     return str(entry)
 
 
-def _extras_index(product: Product) -> dict[str, float]:
-    """Map of lowercased extra name -> price, for the catalog of a product."""
+def _options_index(entries) -> dict[str, float]:
+    """Map of lowercased option name -> price for any [{name,price}|str] list."""
     out: dict[str, float] = {}
-    for e in product.available_extras or []:
-        name = _extra_name(e).strip()
+    for e in entries or []:
+        name = _option_name(e).strip()
         if not name:
             continue
         if isinstance(e, dict):
@@ -59,12 +59,34 @@ def _extras_index(product: Product) -> dict[str, float]:
     return out
 
 
+# Back-compat aliases — older callers may still reference the per-list helpers.
+def _extra_name(entry) -> str:
+    return _option_name(entry)
+
+
+def _extras_index(product: Product) -> dict[str, float]:
+    return _options_index(product.available_extras)
+
+
+def _crusts_index(product: Product) -> dict[str, float]:
+    return _options_index(product.available_crusts)
+
+
 def extras_price_total(product: Product, chosen: Optional[List[str]]) -> float:
     """Sum the price of each chosen extra against the product's catalog."""
     if not chosen:
         return 0.0
     idx = _extras_index(product)
     return round(sum(idx.get(name.lower(), 0.0) for name in chosen), 2)
+
+
+def crust_price(product: Product, chosen: Optional[str]) -> float:
+    """Look up the crust's price; returns 0 for 'sem borda' / unknown / free."""
+    if not chosen:
+        return 0.0
+    if chosen.strip().lower() == "sem borda":
+        return 0.0
+    return round(_crusts_index(product).get(chosen.lower(), 0.0), 2)
 
 
 def calculate_half_pizza_price(
@@ -161,13 +183,27 @@ async def get_menu_for_bot(db: AsyncSession) -> str:
                     lines.append(
                         f"    [meia-a-meia: {', '.join(half_sizes)}]"
                     )
-            if p.available_extras:
+            if p.available_crusts:
+                idx = _crusts_index(p)
                 parts = []
-                for e in p.available_extras:
-                    name = _extra_name(e).strip()
+                for c in p.available_crusts:
+                    name = _option_name(c).strip()
                     if not name:
                         continue
-                    price = _extras_index(p).get(name.lower(), 0.0)
+                    price = idx.get(name.lower(), 0.0)
+                    parts.append(
+                        name if price <= 0 else f"{name} (+R$ {price:.2f})".replace(".", ",")
+                    )
+                if parts:
+                    lines.append("    [bordas: " + ", ".join(parts) + "]")
+            if p.available_extras:
+                idx = _extras_index(p)
+                parts = []
+                for e in p.available_extras:
+                    name = _option_name(e).strip()
+                    if not name:
+                        continue
+                    price = idx.get(name.lower(), 0.0)
                     parts.append(
                         name if price <= 0 else f"{name} (+R$ {price:.2f})".replace(".", ",")
                     )
@@ -196,8 +232,10 @@ def validate_combination(
     for p in flavors:
         if _size_price(p, size) is None:
             raise ValueError(f"Tamanho '{size}' indisponível para {p.name}")
-    if crust and crust.lower() != "sem borda" and crust not in (base.available_crusts or []):
-        raise ValueError(f"Borda '{crust}' indisponível para {base.name}")
+    if crust and crust.lower() != "sem borda":
+        allowed_crusts = {_option_name(c).lower() for c in (base.available_crusts or [])}
+        if crust.lower() not in allowed_crusts:
+            raise ValueError(f"Borda '{crust}' indisponível para {base.name}")
     if extras:
         allowed = {_extra_name(e).lower() for e in (base.available_extras or [])}
         for e in extras:

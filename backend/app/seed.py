@@ -15,7 +15,12 @@ from app.models.user import User, UserRole
 from app.utils.security import hash_password
 
 
-DEFAULT_CRUSTS = ["Catupiry", "Cheddar", "Chocolate", "Sem Borda"]
+DEFAULT_CRUSTS = [
+    {"name": "Catupiry", "price": 0},
+    {"name": "Cheddar", "price": 0},
+    {"name": "Chocolate", "price": 0},
+    {"name": "Sem Borda", "price": 0},
+]
 DEFAULT_EXTRAS = [
     {"name": "Extra Queijo", "price": 0},
     {"name": "Extra Bacon", "price": 0},
