@@ -181,28 +181,53 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
                     <Plus size={12} /> Adicionar
                   </button>
                 </div>
-                {data.sizes?.map((s, i) => (
-                  <div key={i} className="flex gap-2 mb-2">
-                    <input
-                      type="text"
-                      placeholder="tamanho"
-                      value={s.size}
-                      onChange={(e) => updateSize(i, 'size', e.target.value)}
-                      className="input-field flex-1"
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="preço"
-                      value={s.price}
-                      onChange={(e) => updateSize(i, 'price', e.target.value)}
-                      className="input-field w-28"
-                    />
-                    <button onClick={() => removeSize(i)} className="text-white/40 hover:text-red-400 px-2">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))}
+                {data.sizes?.map((s, i) => {
+                  // Per-size meia-a-meia. null/undefined falls back to the
+                  // product-level allows_half (legacy rows). Once edited,
+                  // the per-size flag wins on the backend.
+                  const halfChecked =
+                    s.allows_half == null ? !!data.allows_half : !!s.allows_half
+                  return (
+                    <div key={i} className="flex gap-2 mb-2 items-center">
+                      <input
+                        type="text"
+                        placeholder="tamanho"
+                        value={s.size}
+                        onChange={(e) => updateSize(i, 'size', e.target.value)}
+                        className="input-field flex-1"
+                      />
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="preço"
+                        value={s.price}
+                        onChange={(e) => updateSize(i, 'price', e.target.value)}
+                        className="input-field w-24"
+                      />
+                      {data.is_pizza && (
+                        <label
+                          className="flex items-center gap-1 text-[11px] text-white/60 select-none whitespace-nowrap"
+                          title="Marque para permitir meia-a-meia neste tamanho"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={halfChecked}
+                            onChange={(e) => updateSize(i, 'allows_half', e.target.checked)}
+                          />
+                          1/2
+                        </label>
+                      )}
+                      <button onClick={() => removeSize(i)} className="text-white/40 hover:text-red-400 px-2">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  )
+                })}
+                {data.is_pizza && (
+                  <p className="text-[10px] text-white/40 mt-1">
+                    "1/2" libera meia-a-meia naquele tamanho. Tamanhos sem marca não aceitam dois sabores.
+                  </p>
+                )}
               </div>
 
               {(() => {

@@ -28,6 +28,9 @@ class CategoryOut(CategoryBase):
 class SizePrice(BaseModel):
     size: str
     price: float
+    # None = inherit from Product.allows_half (legacy rows). True/False = explicit
+    # per-size rule. Pichya: only "grande" allows meia-a-meia.
+    allows_half: Optional[bool] = None
 
 
 class ExtraOption(BaseModel):

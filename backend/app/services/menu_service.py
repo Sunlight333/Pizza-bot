@@ -17,6 +17,23 @@ def _size_price(product: Product, size: str) -> Optional[float]:
     return None
 
 
+def _size_allows_half(product: Product, size: str) -> bool:
+    """
+    Per-size meia-a-meia rule with fallback to the product-level flag.
+
+    Pichya only lets "grande" do half-and-half; brotinho/pequena/média must
+    be 1-flavor. Each size dict can carry its own allows_half; rows that
+    predate the 0008 migration fall back to Product.allows_half.
+    """
+    for entry in product.sizes or []:
+        if entry.get("size", "").lower() == size.lower():
+            v = entry.get("allows_half")
+            if v is None:
+                return bool(product.allows_half)
+            return bool(v)
+    return bool(product.allows_half)
+
+
 def _extra_name(entry) -> str:
     """available_extras may hold legacy plain strings or {name, price} dicts."""
     if isinstance(entry, dict):
@@ -134,8 +151,16 @@ async def get_menu_for_bot(db: AsyncSession) -> str:
             lines.append(f"- {p.name}{' — ' + sizes if sizes else ''}")
             if p.description:
                 lines.append(f"    ({p.description})")
-            if p.is_pizza and p.allows_half:
-                lines.append("    [permite meia-a-meia]")
+            if p.is_pizza:
+                half_sizes = [
+                    s["size"]
+                    for s in (p.sizes or [])
+                    if _size_allows_half(p, s.get("size", ""))
+                ]
+                if half_sizes:
+                    lines.append(
+                        f"    [meia-a-meia: {', '.join(half_sizes)}]"
+                    )
             if p.available_extras:
                 parts = []
                 for e in p.available_extras:
@@ -161,8 +186,13 @@ def validate_combination(
     if not flavors:
         raise ValueError("Pelo menos um sabor é obrigatório")
     base = flavors[0]
-    if len(flavors) > 1 and not base.allows_half:
-        raise ValueError(f"{base.name} não permite meia-a-meia")
+    if len(flavors) > 1:
+        # Per-size rule: brotinho may be 1-flavor only even when the pizza
+        # supports half on grande. Reject early with a size-specific message.
+        if not _size_allows_half(base, size):
+            raise ValueError(
+                f"Tamanho '{size}' não permite meia-a-meia em {base.name}"
+            )
     for p in flavors:
         if _size_price(p, size) is None:
             raise ValueError(f"Tamanho '{size}' indisponível para {p.name}")
