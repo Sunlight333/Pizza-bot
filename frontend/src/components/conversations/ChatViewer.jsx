@@ -22,7 +22,7 @@ function Bubble({ msg }) {
     ? 'bg-white/8 text-white border border-glass-border rounded-tl-md'
     : isAdmin
       ? 'bg-purple-500/15 text-purple-100 border border-purple-500/30 rounded-tr-md'
-      : 'bg-primary-gradient text-white shadow-glow-primary rounded-tr-md'
+      : 'bg-primary/15 text-white border border-primary/30 rounded-tr-md'
 
   return (
     <motion.div
