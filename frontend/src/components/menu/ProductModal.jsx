@@ -68,9 +68,22 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
               return { name: '', prices: {} }
             })
           : []
+      // Resolve each size's allows_half to a concrete bool on load — if it's
+      // null/undefined the operator's intent today is the inherited global
+      // flag, so persist that explicitly. Otherwise a save without touching
+      // the per-size checkbox keeps the null and validate_combination later
+      // can't tell if meia-a-meia should be rejected.
+      const productAllowsHalf = !!product.allows_half
+      const sizes = Array.isArray(product.sizes)
+        ? product.sizes.map((s) => ({
+            ...s,
+            allows_half: s.allows_half == null ? productAllowsHalf : !!s.allows_half,
+          }))
+        : empty.sizes
       setData({
         ...empty,
         ...product,
+        sizes,
         available_extras: normalize(product.available_extras),
         available_crusts: normalize(product.available_crusts),
       })
@@ -179,16 +192,38 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
             <div className="p-6 space-y-4">
               <div>
                 <label className="text-xs text-white/50 mb-1 block">Categoria</label>
-                <select
-                  value={data.category_id}
-                  onChange={(e) => set('category_id', e.target.value)}
-                  className="input-field"
-                >
-                  <option value="">Selecione...</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <select
+                    value={data.category_id}
+                    onChange={(e) => set('category_id', e.target.value)}
+                    className="input-field appearance-none pr-10 cursor-pointer"
+                  >
+                    {/*
+                      Native <option> elements ignore most CSS — Chrome/Edge use the
+                      OS dropdown which paints them on a white surface. The inline
+                      style is the only reliable way to keep them readable on the
+                      dark theme. Same color tokens as bg-bg-card / text-white.
+                    */}
+                    <option value="" style={{ backgroundColor: '#1A1A3E', color: '#fff' }}>
+                      Selecione...
+                    </option>
+                    {categories.map((c) => (
+                      <option
+                        key={c.id}
+                        value={c.id}
+                        style={{ backgroundColor: '#1A1A3E', color: '#fff' }}
+                      >
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-white/50"
+                  >
+                    ▾
+                  </span>
+                </div>
               </div>
 
               <div>
@@ -451,12 +486,12 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
                       </p>
                     )}
                     {(data[key] || []).length > 0 && sizeNames.length > 0 && (
-                      <div className="flex gap-2 mb-1 px-1 items-center">
+                      <div className="flex gap-1.5 mb-1 px-1 items-center">
                         <span className="flex-1 text-[10px] text-white/30">nome</span>
                         {sizeNames.map((sn) => (
                           <span
                             key={sn}
-                            className="w-16 text-[10px] text-white/30 text-center truncate"
+                            className="w-20 text-[10px] text-white/30 text-center truncate"
                             title={sn}
                           >
                             {sn}
@@ -466,17 +501,17 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
                       </div>
                     )}
                     {(data[key] || []).map((item, i) => (
-                      <div key={i} className="flex gap-2 mb-2 items-center">
+                      <div key={i} className="flex gap-1.5 mb-2 items-center">
                         <input
                           type="text"
                           placeholder={
                             key === 'available_crusts'
-                              ? 'ex: Catupiry, Sem Borda'
-                              : 'ex: Cebola, Extra Bacon'
+                              ? 'ex: Catupiry'
+                              : 'ex: Cebola'
                           }
                           value={item.name || ''}
                           onChange={(e) => updateOptionName(key, i, e.target.value)}
-                          className="input-field flex-1 text-sm"
+                          className="input-field flex-1 text-sm min-w-0"
                         />
                         {sizeNames.map((sn) => {
                           const v = item.prices?.[sn]
@@ -486,17 +521,17 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
                               type="number"
                               step="0.01"
                               min="0"
-                              placeholder="grátis"
+                              placeholder="—"
                               value={v == null || Number(v) === 0 ? '' : v}
                               onChange={(e) => updateOptionPrice(key, i, sn, e.target.value)}
-                              className="input-field w-16 text-sm text-right"
-                              title={`${item.name || 'item'} no tamanho ${sn}`}
+                              className="input-field w-20 text-sm text-center px-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              title={`${item.name || 'item'} no tamanho ${sn} (vazio = grátis)`}
                             />
                           )
                         })}
                         <button
                           onClick={() => removeOption(key, i)}
-                          className="text-white/40 hover:text-red-400 px-1"
+                          className="text-white/40 hover:text-red-400 px-1 shrink-0"
                           title="Remover"
                         >
                           <Trash2 size={14} />
