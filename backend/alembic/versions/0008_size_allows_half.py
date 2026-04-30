@@ -4,7 +4,7 @@ Revision ID: 0008
 Revises: 0007
 Create Date: 2026-04-29 00:30:00.000000
 
-Pichya's rule: only the "grande" size allows meia-a-meia; brotinho/pequena/
+Customer rule: only the "grande" size allows meia-a-meia; brotinho/pequena/
 média are 1-flavor only. The product-level Product.allows_half is too coarse
 for this — we need a flag on each size entry.
 

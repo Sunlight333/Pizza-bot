@@ -86,7 +86,7 @@ async def get_all_zones_formatted(db: AsyncSession) -> str:
         return "(nenhum bairro cadastrado)"
 
     def line(z: DeliveryZone) -> str:
-        # If the zone is a distance band (Pichya pricing model), the label is
+        # If the zone is a distance band pricing model, the label is
         # already the km range — don't duplicate it. Otherwise it's a named
         # bairro and we just show fee + ETA.
         base = f"- {z.neighborhood}: R$ {float(z.fee):.2f} (~{z.estimated_minutes}min)"

@@ -4,7 +4,7 @@ Revision ID: 0007
 Revises: 0006
 Create Date: 2026-04-29 00:00:00.000000
 
-Pichya's menu has a mix of free toppings (cebola, requeijão) and paid ones
+The customer's menu has a mix of free toppings (cebola, requeijão) and paid ones
 (extra queijo, bacon). The old shape only stored names so the operator had
 nowhere to enter the price; the bot also couldn't add the charge to the
 order. Each existing string entry is backfilled to {"name": <str>, "price": 0},

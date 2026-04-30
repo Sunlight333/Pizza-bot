@@ -4,7 +4,7 @@ Revision ID: 0006
 Revises: 0005
 Create Date: 2026-04-26 14:00:00.000000
 
-The customer (Pichya) prices delivery by distance bands (0–2 km R$5,
+The customer prices delivery by distance bands (0–2 km R$5,
 2,1–3 km R$6, …) rather than by named neighborhood. The existing
 `neighborhood` column stays as the human-readable label and lookup key
 for the bot's fuzzy matcher; these new columns let the same row also

@@ -21,7 +21,7 @@ def _size_allows_half(product: Product, size: str) -> bool:
     """
     Per-size meia-a-meia rule with fallback to the product-level flag.
 
-    Pichya only lets "grande" do half-and-half; brotinho/pequena/média must
+    Some operators only let "grande" do half-and-half; brotinho/pequena/média must
     be 1-flavor. Each size dict can carry its own allows_half; rows that
     predate the 0008 migration fall back to Product.allows_half.
     """

@@ -1,5 +1,5 @@
 """
-Per-size pricing for crusts and extras (Pichya scenario):
+Per-size pricing for crusts and extras:
 
   - "Catupiry" crust on brotinho costs R$ 3, on grande R$ 6.
   - "Extra Queijo" on brotinho costs R$ 4, on grande R$ 7.
@@ -133,7 +133,7 @@ def test_unit_price_grande_same_options_costs_more():
 
 
 def test_brotinho_rejects_meia_a_meia():
-    """Pichya rule: brotinho is 1-flavor only even when product allows half."""
+    """Per-size rule: brotinho is 1-flavor only even when product allows half."""
     a = make_pizza()
     b = SimpleNamespace(
         id=2,

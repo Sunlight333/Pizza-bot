@@ -4,7 +4,7 @@ Revision ID: 0010
 Revises: 0009
 Create Date: 2026-04-29 02:00:00.000000
 
-Pichya charges different rates for the same crust depending on size: catupiry
+The customer charges different rates for the same crust depending on size: catupiry
 on brotinho costs less than catupiry on grande. The flat-price shape from
 0007/0009 ({name, price}) is too coarse — replace `price` with a `prices`
 map keyed by the size name.
