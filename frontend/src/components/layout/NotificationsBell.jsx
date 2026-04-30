@@ -56,7 +56,10 @@ export default function NotificationsBell() {
 
   // 2. Periodic poll for data warnings — replaces previous batch so we don't
   //    accumulate duplicates each refetch.
-  const { data: warnings = [] } = useQuery({
+  // NOTE: deliberately not using `data: warnings = []` because the default
+  // creates a fresh empty array every render while the query is loading,
+  // which thrashes the effect's deps and triggers an infinite update loop.
+  const { data: warnings } = useQuery({
     queryKey: ['notifications-data-warnings'],
     queryFn: menuApi.dataWarnings,
     refetchInterval: 60_000,
@@ -64,13 +67,14 @@ export default function NotificationsBell() {
   })
 
   useEffect(() => {
-    if (!warnings.length) {
+    const list = warnings || []
+    if (!list.length) {
       replaceByType('warning', [])
       return
     }
     replaceByType(
       'warning',
-      warnings.slice(0, 10).map((w) => ({
+      list.slice(0, 10).map((w) => ({
         title: w.name,
         message: w.message,
         link: '/menu',
@@ -78,8 +82,9 @@ export default function NotificationsBell() {
     )
   }, [warnings, replaceByType])
 
-  // 3. Periodic poll for missing-tax — same dedup pattern.
-  const { data: missingTax = [] } = useQuery({
+  // 3. Periodic poll for missing-tax — same dedup pattern, same caveat about
+  //    the default value.
+  const { data: missingTax } = useQuery({
     queryKey: ['notifications-missing-tax'],
     queryFn: menuApi.missingTax,
     refetchInterval: 120_000,
@@ -87,14 +92,15 @@ export default function NotificationsBell() {
   })
 
   useEffect(() => {
-    if (!missingTax.length) {
+    const list = missingTax || []
+    if (!list.length) {
       replaceByType('fiscal', [])
       return
     }
     replaceByType('fiscal', [
       {
         title: 'Dados fiscais incompletos',
-        message: `${missingTax.length} produto(s) sem NCM/CFOP/CSOSN — Datacaixa pode rejeitar`,
+        message: `${list.length} produto(s) sem NCM/CFOP/CSOSN — Datacaixa pode rejeitar`,
         link: '/menu',
       },
     ])
