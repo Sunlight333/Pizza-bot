@@ -16,16 +16,16 @@ from app.utils.security import hash_password
 
 
 DEFAULT_CRUSTS = [
-    {"name": "Catupiry", "price": 0},
-    {"name": "Cheddar", "price": 0},
-    {"name": "Chocolate", "price": 0},
-    {"name": "Sem Borda", "price": 0},
+    {"name": "Catupiry", "prices": {}},
+    {"name": "Cheddar", "prices": {}},
+    {"name": "Chocolate", "prices": {}},
+    {"name": "Sem Borda", "prices": {}},
 ]
 DEFAULT_EXTRAS = [
-    {"name": "Extra Queijo", "price": 0},
-    {"name": "Extra Bacon", "price": 0},
-    {"name": "Extra Calabresa", "price": 0},
-    {"name": "Sem Cebola", "price": 0},
+    {"name": "Extra Queijo", "prices": {}},
+    {"name": "Extra Bacon", "prices": {}},
+    {"name": "Extra Calabresa", "prices": {}},
+    {"name": "Sem Cebola", "prices": {}},
 ]
 
 PIZZA_TAX = {
@@ -236,8 +236,8 @@ async def seed_products(db, cats: dict[str, int]) -> None:
                 allows_half=True,
                 available_crusts=["Chocolate", "Sem Borda"],
                 available_extras=[
-                    {"name": "Extra Leite Condensado", "price": 0},
-                    {"name": "Extra Morango", "price": 0},
+                    {"name": "Extra Leite Condensado", "prices": {}},
+                    {"name": "Extra Morango", "prices": {}},
                 ],
                 is_active=True,
                 **PIZZA_TAX,

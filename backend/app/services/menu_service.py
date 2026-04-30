@@ -41,52 +41,91 @@ def _option_name(entry) -> str:
     return str(entry)
 
 
-def _options_index(entries) -> dict[str, float]:
-    """Map of lowercased option name -> price for any [{name,price}|str] list."""
-    out: dict[str, float] = {}
-    for e in entries or []:
-        name = _option_name(e).strip()
-        if not name:
-            continue
-        if isinstance(e, dict):
-            try:
-                price = float(e.get("price") or 0)
-            except (TypeError, ValueError):
-                price = 0.0
-        else:
-            price = 0.0
-        out[name.lower()] = price
-    return out
+def _option_price_for_size(entry, size: str) -> float:
+    """
+    Resolve a single option's price for the chosen size. Handles three
+    historical shapes transparently:
+      - {name, prices: {size: price}}  (post-0010 — the real one)
+      - {name, price: float}           (0007..0009 flat shape)
+      - "Catupiry"                     (pre-0007 plain strings)
+    Missing size in the prices map → 0 (free).
+    """
+    if not isinstance(entry, dict):
+        return 0.0
+    prices = entry.get("prices")
+    if isinstance(prices, dict):
+        v = prices.get(size) if size else None
+        if v is None and size:
+            # case-insensitive fallback
+            for k, vv in prices.items():
+                if str(k).lower() == size.lower():
+                    v = vv
+                    break
+        try:
+            return float(v or 0)
+        except (TypeError, ValueError):
+            return 0.0
+    # legacy flat
+    try:
+        return float(entry.get("price") or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
-# Back-compat aliases — older callers may still reference the per-list helpers.
-def _extra_name(entry) -> str:
-    return _option_name(entry)
-
-
-def _extras_index(product: Product) -> dict[str, float]:
-    return _options_index(product.available_extras)
-
-
-def _crusts_index(product: Product) -> dict[str, float]:
-    return _options_index(product.available_crusts)
-
-
-def extras_price_total(product: Product, chosen: Optional[List[str]]) -> float:
-    """Sum the price of each chosen extra against the product's catalog."""
+def extras_price_total(
+    product: Product, chosen: Optional[List[str]], size: str
+) -> float:
+    """Sum the price of each chosen extra at the given size."""
     if not chosen:
         return 0.0
-    idx = _extras_index(product)
-    return round(sum(idx.get(name.lower(), 0.0) for name in chosen), 2)
+    catalog = {_option_name(e).lower(): e for e in (product.available_extras or [])}
+    total = 0.0
+    for name in chosen:
+        entry = catalog.get(name.lower())
+        if entry is None:
+            continue
+        total += _option_price_for_size(entry, size)
+    return round(total, 2)
 
 
-def crust_price(product: Product, chosen: Optional[str]) -> float:
-    """Look up the crust's price; returns 0 for 'sem borda' / unknown / free."""
+def crust_price(product: Product, chosen: Optional[str], size: str) -> float:
+    """Look up the crust's price for the given size."""
     if not chosen:
         return 0.0
     if chosen.strip().lower() == "sem borda":
         return 0.0
-    return round(_crusts_index(product).get(chosen.lower(), 0.0), 2)
+    for c in (product.available_crusts or []):
+        if _option_name(c).lower() == chosen.lower():
+            return round(_option_price_for_size(c, size), 2)
+    return 0.0
+
+
+def _option_render_for_bot(entry, sizes: List[str]) -> str:
+    """Render '<name>' or '<name> (<size> R$ X, ...)' depending on prices."""
+    name = _option_name(entry).strip()
+    if not name:
+        return ""
+    prices = entry.get("prices") if isinstance(entry, dict) else None
+    if not prices:
+        # legacy / no per-size prices set → free
+        return name
+    # Trim to the sizes the product actually has, in declared order
+    parts = []
+    for s in sizes:
+        v = prices.get(s)
+        if v is None:
+            for k, vv in prices.items():
+                if str(k).lower() == s.lower():
+                    v = vv
+                    break
+        if v is None or float(v) == 0:
+            continue
+        parts.append(
+            f"{s} +R$ {float(v):.2f}".replace(".", ",")
+        )
+    if not parts:
+        return name
+    return f"{name} ({', '.join(parts)})"
 
 
 def calculate_half_pizza_price(
@@ -183,30 +222,23 @@ async def get_menu_for_bot(db: AsyncSession) -> str:
                     lines.append(
                         f"    [meia-a-meia: {', '.join(half_sizes)}]"
                     )
+            size_names = [
+                s["size"] for s in (p.sizes or []) if isinstance(s, dict) and s.get("size")
+            ]
             if p.available_crusts:
-                idx = _crusts_index(p)
-                parts = []
-                for c in p.available_crusts:
-                    name = _option_name(c).strip()
-                    if not name:
-                        continue
-                    price = idx.get(name.lower(), 0.0)
-                    parts.append(
-                        name if price <= 0 else f"{name} (+R$ {price:.2f})".replace(".", ",")
-                    )
+                parts = [
+                    _option_render_for_bot(c, size_names)
+                    for c in p.available_crusts
+                ]
+                parts = [x for x in parts if x]
                 if parts:
                     lines.append("    [bordas: " + ", ".join(parts) + "]")
             if p.available_extras:
-                idx = _extras_index(p)
-                parts = []
-                for e in p.available_extras:
-                    name = _option_name(e).strip()
-                    if not name:
-                        continue
-                    price = idx.get(name.lower(), 0.0)
-                    parts.append(
-                        name if price <= 0 else f"{name} (+R$ {price:.2f})".replace(".", ",")
-                    )
+                parts = [
+                    _option_render_for_bot(e, size_names)
+                    for e in p.available_extras
+                ]
+                parts = [x for x in parts if x]
                 if parts:
                     lines.append("    [adicionais: " + ", ".join(parts) + "]")
     return "\n".join(lines).strip()
@@ -237,7 +269,7 @@ def validate_combination(
         if crust.lower() not in allowed_crusts:
             raise ValueError(f"Borda '{crust}' indisponível para {base.name}")
     if extras:
-        allowed = {_extra_name(e).lower() for e in (base.available_extras or [])}
+        allowed = {_option_name(e).lower() for e in (base.available_extras or [])}
         for e in extras:
             if e.lower() not in allowed:
                 raise ValueError(f"Adicional '{e}' indisponível")

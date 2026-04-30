@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
@@ -34,29 +34,42 @@ class SizePrice(BaseModel):
 
 
 class ExtraOption(BaseModel):
-    """Adicional (extra topping). price=0 means it's free (e.g. cebola, requeijão)."""
+    """Adicional (extra topping). prices map size -> charge; missing/0 = free."""
     name: str = Field(..., min_length=1, max_length=80)
-    price: float = 0.0
+    prices: Dict[str, float] = Field(default_factory=dict)
 
 
 class CrustOption(BaseModel):
-    """Borda (stuffed crust). price=0 = no charge ("sem borda")."""
+    """Borda. prices map size -> charge (Catupiry costs less on brotinho)."""
     name: str = Field(..., min_length=1, max_length=80)
-    price: float = 0.0
+    prices: Dict[str, float] = Field(default_factory=dict)
 
 
 def _normalize_named_options(value):
     """
-    Pre-migration rows store options as plain strings. Coerce each legacy
-    string to {name: <str>, price: 0} so ProductOut still validates while
-    the migration is rolling out (or for any data missed by the backfill).
+    Coerce legacy shapes into {name, prices: {}}:
+      - bare strings (pre-0007/0009): "Catupiry"
+      - flat-price dicts (0007..0009): {"name": "Catupiry", "price": 5}
+    Migration 0010 already does this in the DB; this validator backstops
+    rows the backfill missed (or callers passing the old shape).
     """
     if value is None:
         return value
     out = []
     for v in value:
         if isinstance(v, str):
-            out.append({"name": v, "price": 0.0})
+            out.append({"name": v, "prices": {}})
+        elif isinstance(v, dict):
+            if "prices" in v:
+                out.append(v)
+            elif "price" in v:
+                # We don't know the product's sizes here, so fall back to an
+                # empty map and let the consumer treat "missing size" as 0.
+                # The flat price is dropped — not ideal but acceptable since
+                # the migration handles real data.
+                out.append({"name": v.get("name") or "", "prices": {}})
+            else:
+                out.append({"name": v.get("name") or "", "prices": v.get("prices") or {}})
         else:
             out.append(v)
     return out

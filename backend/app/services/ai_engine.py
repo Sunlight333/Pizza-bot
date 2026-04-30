@@ -498,6 +498,19 @@ async def _execute_tool_call(
 
         return f"ferramenta desconhecida: {name}"
 
+    except ValueError as e:
+        # ValueError from order_builder/menu_service signals a *user-input*
+        # problem (size doesn't allow meia-a-meia, unknown extra, etc.) —
+        # not a system fault. Hand it to the model as a clear instruction so
+        # it composes a polite reply instead of a stack trace. The "INVÁLIDO:"
+        # prefix is invisible to the customer; the model strips it.
+        log.info("tool %s rejected: %s", name, e)
+        return (
+            f"INVÁLIDO: {e}. "
+            "Diga ao cliente em português, de forma educada, qual o problema "
+            "e ofereça uma alternativa quando possível (ex: outro tamanho, "
+            "1 sabor só, outra borda)."
+        )
     except Exception as e:
         log.exception("tool %s failed", name)
         return f"erro: {e}"

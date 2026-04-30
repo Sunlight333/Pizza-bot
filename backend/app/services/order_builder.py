@@ -68,11 +68,12 @@ async def add_pizza(
 
     # Paid extras (e.g. "extra queijo R$ 5") and stuffed-crust upcharges
     # (catupiry/cheddar) add to the unit price; free options ("sem borda",
-    # cebola, requeijão) are catalogued at price 0 and pass through.
+    # cebola, requeijão) are catalogued at 0 and pass through. Per-size
+    # pricing means catupiry on brotinho costs less than on grande.
     price = round(
         price
-        + crust_price(flavors[0], crust)
-        + extras_price_total(flavors[0], extras),
+        + crust_price(flavors[0], crust, size)
+        + extras_price_total(flavors[0], extras, size),
         2,
     )
 

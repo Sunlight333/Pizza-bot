@@ -41,15 +41,32 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
 
   useEffect(() => {
     if (product) {
-      // Pre-migration data may store extras/crusts as plain strings; normalize
-      // so both editors below always work with {name, price} rows.
+      // Coerce every shape we've ever shipped into {name, prices: {size: price}}:
+      //  - "Catupiry"                    (pre-0007 plain string)
+      //  - {name, price}                 (0007..0009 flat per-option price)
+      //  - {name, prices: {brotinho:3}}  (post-0010 — the real shape)
       const normalize = (arr) =>
         Array.isArray(arr)
-          ? arr.map((e) =>
-              typeof e === 'string'
-                ? { name: e, price: 0 }
-                : { name: e.name || '', price: Number(e.price) || 0 },
-            )
+          ? arr.map((e) => {
+              if (typeof e === 'string') return { name: e, prices: {} }
+              if (e && typeof e === 'object') {
+                if (e.prices && typeof e.prices === 'object') {
+                  // strip 0/falsy entries — empty == free
+                  const cleaned = {}
+                  for (const [k, v] of Object.entries(e.prices)) {
+                    if (Number(v) > 0) cleaned[k] = Number(v)
+                  }
+                  return { name: e.name || '', prices: cleaned }
+                }
+                if (e.price != null) {
+                  // Legacy flat price → not enough info to spread per size,
+                  // so keep prices empty (operator re-enters per cell).
+                  return { name: e.name || '', prices: {} }
+                }
+                return { name: e.name || '', prices: {} }
+              }
+              return { name: '', prices: {} }
+            })
           : []
       setData({
         ...empty,
@@ -94,30 +111,29 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
     set('sizes', copy)
   }
 
-  const addExtra = () =>
-    set('available_extras', [...(data.available_extras || []), { name: '', price: 0 }])
-  const removeExtra = (i) =>
-    set(
-      'available_extras',
-      (data.available_extras || []).filter((_, idx) => idx !== i),
-    )
-  const updateExtra = (i, k, v) => {
-    const copy = [...(data.available_extras || [])]
-    copy[i] = { ...copy[i], [k]: k === 'price' ? Number(v) : v }
-    set('available_extras', copy)
+  // Generic helpers for the size×option matrix used by both bordas and adicionais.
+  const addOption = (key) =>
+    set(key, [...(data[key] || []), { name: '', prices: {} }])
+  const removeOption = (key, i) =>
+    set(key, (data[key] || []).filter((_, idx) => idx !== i))
+  const updateOptionName = (key, i, name) => {
+    const copy = [...(data[key] || [])]
+    copy[i] = { ...copy[i], name }
+    set(key, copy)
   }
-
-  const addCrust = () =>
-    set('available_crusts', [...(data.available_crusts || []), { name: '', price: 0 }])
-  const removeCrust = (i) =>
-    set(
-      'available_crusts',
-      (data.available_crusts || []).filter((_, idx) => idx !== i),
-    )
-  const updateCrust = (i, k, v) => {
-    const copy = [...(data.available_crusts || [])]
-    copy[i] = { ...copy[i], [k]: k === 'price' ? Number(v) : v }
-    set('available_crusts', copy)
+  const updateOptionPrice = (key, i, sizeName, raw) => {
+    const copy = [...(data[key] || [])]
+    const prices = { ...(copy[i].prices || {}) }
+    const num = Number(raw)
+    if (raw === '' || raw == null || Number.isNaN(num) || num <= 0) {
+      // Empty / 0 / negative => free for that size; remove the entry so the
+      // backend treats "missing size" and "explicit 0" the same way.
+      delete prices[sizeName]
+    } else {
+      prices[sizeName] = num
+    }
+    copy[i] = { ...copy[i], prices }
+    set(key, copy)
   }
 
   const handleSave = async () => {
@@ -406,130 +422,108 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
                 </label>
               </div>
 
-              {data.is_pizza && (
-                <>
+              {data.is_pizza && (() => {
+                // Render a size×option price matrix used by both bordas and adicionais.
+                // Each cell is the price of that option on that size; empty = free.
+                const sizeNames = (data.sizes || [])
+                  .map((s) => s.size)
+                  .filter((s) => s && s.trim())
+
+                const matrix = (key, label, addLabel, hint) => (
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="text-xs text-white/50">Bordas disponíveis</label>
+                      <label className="text-xs text-white/50">{label}</label>
                       <button
-                        onClick={addCrust}
+                        onClick={() => addOption(key)}
                         className="btn-ghost text-xs py-1 px-2 flex items-center gap-1"
                       >
-                        <Plus size={12} /> Adicionar
+                        <Plus size={12} /> {addLabel}
                       </button>
                     </div>
-                    {(data.available_crusts || []).length === 0 && (
+                    {(data[key] || []).length === 0 && (
                       <p className="text-[10px] text-white/40 mb-2">
-                        Nenhuma borda. Clique em "Adicionar" para incluir.
+                        Nenhum item. Clique em "{addLabel}" para incluir.
                       </p>
                     )}
-                    {(data.available_crusts || []).map((cr, i) => {
-                      const isFree = !cr.price || Number(cr.price) === 0
-                      return (
-                        <div key={i} className="flex gap-2 mb-2 items-center">
-                          <input
-                            type="text"
-                            placeholder="nome (ex: Catupiry, Sem Borda)"
-                            value={cr.name || ''}
-                            onChange={(e) => updateCrust(i, 'name', e.target.value)}
-                            className="input-field flex-1 text-sm"
-                          />
-                          <label className="flex items-center gap-1 text-[11px] text-white/60 select-none whitespace-nowrap">
-                            <input
-                              type="checkbox"
-                              checked={isFree}
-                              onChange={(e) =>
-                                updateCrust(i, 'price', e.target.checked ? 0 : cr.price || 1)
-                              }
-                            />
-                            Grátis
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="R$"
-                            value={isFree ? '' : cr.price}
-                            disabled={isFree}
-                            onChange={(e) => updateCrust(i, 'price', e.target.value)}
-                            className="input-field w-20 text-sm disabled:opacity-40"
-                          />
-                          <button
-                            onClick={() => removeCrust(i)}
-                            className="text-white/40 hover:text-red-400 px-1"
-                            title="Remover"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      )
-                    })}
-                    <p className="text-[10px] text-white/40 mt-1">
-                      Marque "Grátis" para bordas sem custo (ex: Sem Borda).
-                    </p>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-xs text-white/50">Adicionais disponíveis</label>
-                      <button
-                        onClick={addExtra}
-                        className="btn-ghost text-xs py-1 px-2 flex items-center gap-1"
-                      >
-                        <Plus size={12} /> Adicionar
-                      </button>
-                    </div>
-                    {(data.available_extras || []).length === 0 && (
-                      <p className="text-[10px] text-white/40 mb-2">
-                        Nenhum adicional. Clique em "Adicionar" para incluir.
+                    {(data[key] || []).length > 0 && sizeNames.length === 0 && (
+                      <p className="text-[10px] text-yellow-400/70 mb-2">
+                        Adicione tamanhos primeiro para definir os preços por tamanho.
                       </p>
                     )}
-                    {(data.available_extras || []).map((ex, i) => {
-                      const isFree = !ex.price || Number(ex.price) === 0
-                      return (
-                        <div key={i} className="flex gap-2 mb-2 items-center">
-                          <input
-                            type="text"
-                            placeholder="nome (ex: Cebola, Extra Bacon)"
-                            value={ex.name || ''}
-                            onChange={(e) => updateExtra(i, 'name', e.target.value)}
-                            className="input-field flex-1 text-sm"
-                          />
-                          <label className="flex items-center gap-1 text-[11px] text-white/60 select-none whitespace-nowrap">
-                            <input
-                              type="checkbox"
-                              checked={isFree}
-                              onChange={(e) =>
-                                updateExtra(i, 'price', e.target.checked ? 0 : ex.price || 1)
-                              }
-                            />
-                            Grátis
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="R$"
-                            value={isFree ? '' : ex.price}
-                            disabled={isFree}
-                            onChange={(e) => updateExtra(i, 'price', e.target.value)}
-                            className="input-field w-20 text-sm disabled:opacity-40"
-                          />
-                          <button
-                            onClick={() => removeExtra(i)}
-                            className="text-white/40 hover:text-red-400 px-1"
-                            title="Remover"
+                    {(data[key] || []).length > 0 && sizeNames.length > 0 && (
+                      <div className="flex gap-2 mb-1 px-1 items-center">
+                        <span className="flex-1 text-[10px] text-white/30">nome</span>
+                        {sizeNames.map((sn) => (
+                          <span
+                            key={sn}
+                            className="w-16 text-[10px] text-white/30 text-center truncate"
+                            title={sn}
                           >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      )
-                    })}
-                    <p className="text-[10px] text-white/40 mt-1">
-                      Marque "Grátis" para adicionais sem custo (ex: cebola, requeijão).
-                    </p>
+                            {sn}
+                          </span>
+                        ))}
+                        <span className="w-5" />
+                      </div>
+                    )}
+                    {(data[key] || []).map((item, i) => (
+                      <div key={i} className="flex gap-2 mb-2 items-center">
+                        <input
+                          type="text"
+                          placeholder={
+                            key === 'available_crusts'
+                              ? 'ex: Catupiry, Sem Borda'
+                              : 'ex: Cebola, Extra Bacon'
+                          }
+                          value={item.name || ''}
+                          onChange={(e) => updateOptionName(key, i, e.target.value)}
+                          className="input-field flex-1 text-sm"
+                        />
+                        {sizeNames.map((sn) => {
+                          const v = item.prices?.[sn]
+                          return (
+                            <input
+                              key={sn}
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="grátis"
+                              value={v == null || Number(v) === 0 ? '' : v}
+                              onChange={(e) => updateOptionPrice(key, i, sn, e.target.value)}
+                              className="input-field w-16 text-sm text-right"
+                              title={`${item.name || 'item'} no tamanho ${sn}`}
+                            />
+                          )
+                        })}
+                        <button
+                          onClick={() => removeOption(key, i)}
+                          className="text-white/40 hover:text-red-400 px-1"
+                          title="Remover"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                    <p className="text-[10px] text-white/40 mt-1">{hint}</p>
                   </div>
-                </>
-              )}
+                )
+
+                return (
+                  <>
+                    {matrix(
+                      'available_crusts',
+                      'Bordas disponíveis',
+                      'Adicionar',
+                      'Deixe em branco para grátis (ex: Sem Borda). Preço por tamanho — catupiry pode custar menos no brotinho.',
+                    )}
+                    {matrix(
+                      'available_extras',
+                      'Adicionais disponíveis',
+                      'Adicionar',
+                      'Deixe em branco para grátis (cebola, requeijão). Preço por tamanho — extra queijo pode custar menos no brotinho.',
+                    )}
+                  </>
+                )
+              })()}
 
               <button
                 onClick={() => setShowTax((v) => !v)}
