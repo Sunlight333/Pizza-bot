@@ -113,7 +113,7 @@ export default function GlobalSearch() {
       )}
 
       {open && enabled && (
-        <div className="absolute left-0 right-0 top-[calc(100%+6px)] glass-card max-h-[480px] overflow-y-auto z-30 p-1">
+        <div className="absolute left-0 right-0 top-[calc(100%+6px)] glass-card bg-bg-card shadow-2xl shadow-black/60 max-h-[480px] overflow-y-auto z-30 p-1">
           {!loading && total === 0 && (
             <div className="px-3 py-4 text-sm text-white/50 text-center">
               Nenhum resultado para "{debounced}"
