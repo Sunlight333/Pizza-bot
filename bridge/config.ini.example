@@ -1,17 +1,29 @@
+; This file is OPTIONAL — the wizard inside bridge.exe writes a real
+; config.ini for you on first run. Use this only if you want to deliver
+; a pre-baked config to the client (drop it next to bridge.exe and the
+; wizard is skipped).
+;
+; The token must match the backend:
+;   - Set BRIDGE_TOKEN in the server's .env (recommended), OR
+;   - Leave BRIDGE_TOKEN empty on the server and use:
+;       <first 16 chars of JWT_SECRET>bridge
+
 [api]
 url = https://pizzabot.seu-dominio.com.br
-token = CHANGE-ME-to-first-16-chars-of-JWT-SECRET-plus-bridge
+token = REPLACE-WITH-BRIDGE-TOKEN
 
 [datacaixa]
 pedidos_folder = C:\Datacaixa\Integracao\Pedidos
-
-[firebird]
-path = C:\Datacaixa\BANCO.FDB
-user = SYSDBA
-password = masterkey
 
 [service]
 host_label = pizzeria-pc-01
 poll_seconds = 5
 heartbeat_seconds = 30
 tax_refresh_hours = 6
+
+; Optional — only fill in if you also installed the `fdb` Python lib and
+; want the bridge to cache product tax data from Datacaixa's Firebird DB.
+; [firebird]
+; path = C:\Datacaixa\BANCO.FDB
+; user = SYSDBA
+; password = masterkey

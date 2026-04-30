@@ -25,6 +25,10 @@ def refresh_tax_cache(cfg: configparser.ConfigParser) -> None:
         log.warning("fdb not installed — skipping Firebird refresh")
         return
 
+    if not cfg.has_section("firebird") or not cfg.get("firebird", "path", fallback=""):
+        log.info("no [firebird] config — skipping Firebird refresh")
+        return
+
     db_path = cfg["firebird"]["path"]
     user = cfg["firebird"].get("user", "SYSDBA")
     pw = cfg["firebird"].get("password", "masterkey")
