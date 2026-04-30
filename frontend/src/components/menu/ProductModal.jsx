@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Plus, Trash2, RotateCcw, Upload, Camera, EyeOff, Eye, Loader2 } from 'lucide-react'
+import { X, Plus, Trash2, RotateCcw, Upload, Camera, EyeOff, Eye, Loader2, Copy } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { pizzaImage, ASSETS } from '@/utils/assets'
@@ -147,6 +147,29 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
     }
     copy[i] = { ...copy[i], prices }
     set(key, copy)
+  }
+
+  const handleReplicate = async () => {
+    if (!product?.id) {
+      toast.error('Salve o produto antes de replicar')
+      return
+    }
+    if (
+      !confirm(
+        `Copiar as bordas e adicionais desta pizza ("${data.name}") para TODAS as outras pizzas ativas?\n\n` +
+          'As listas atuais delas serão SOBRESCRITAS. Use depois de configurar esta pizza ' +
+          'como modelo (preços por tamanho de borda/adicional).',
+      )
+    )
+      return
+    try {
+      const r = await menuApi.replicateOptions(product.id)
+      toast.success(
+        `Bordas e adicionais copiados para ${r.products_affected} pizza(s).`,
+      )
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Falha ao replicar')
+    }
   }
 
   const handleSave = async () => {
@@ -555,6 +578,16 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
                       'Adicionais disponíveis',
                       'Adicionar',
                       'Deixe em branco para grátis (cebola, requeijão). Preço por tamanho — extra queijo pode custar menos no brotinho.',
+                    )}
+                    {product?.id && (
+                      <button
+                        type="button"
+                        onClick={handleReplicate}
+                        className="btn-ghost text-xs py-2 px-3 w-full flex items-center justify-center gap-2"
+                        title="Copia as bordas e adicionais desta pizza para todas as outras pizzas ativas"
+                      >
+                        <Copy size={12} /> Replicar bordas e adicionais nas outras pizzas
+                      </button>
                     )}
                   </>
                 )

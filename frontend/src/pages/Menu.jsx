@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Plus, Edit2, Trash2, Pizza as PizzaIcon, Tag, Upload, AlertTriangle, Search } from 'lucide-react'
+import { Plus, Edit2, Trash2, Pizza as PizzaIcon, Tag, Upload, AlertTriangle, Search, Wrench, AlertCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import AnimatedPage from '@/components/layout/AnimatedPage'
@@ -62,6 +62,30 @@ export default function Menu() {
     refetchInterval: 60_000,
   })
   const missingIds = new Set(missingTax.map((m) => m.id))
+
+  // Data-quality warnings (suspicious prices, missing crusts, etc.)
+  const { data: warnings = [] } = useQuery({
+    queryKey: ['products-data-warnings'],
+    queryFn: menuApi.dataWarnings,
+    refetchInterval: 60_000,
+  })
+
+  const bulkAllowsHalf = useMutation({
+    mutationFn: () =>
+      menuApi.bulkAllowsHalf({
+        size_names: ['brotinho', 'pequena', 'média', 'media'],
+        allows_half: false,
+      }),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['products'] })
+      qc.invalidateQueries({ queryKey: ['products-data-warnings'] })
+      toast.success(
+        `Regra aplicada em ${r.products_affected} pizza(s) — agora brotinho/pequena/média são 1 sabor.`,
+      )
+    },
+    onError: (e) =>
+      toast.error(e.response?.data?.detail || 'Erro ao aplicar regra'),
+  })
 
   const taxImportRef = useRef(null)
   const taxImport = useMutation({
@@ -131,6 +155,24 @@ export default function Menu() {
         >
           <Upload size={14} /> CSV Fiscal
         </button>
+        <button
+          onClick={() => {
+            if (
+              confirm(
+                'Aplicar a regra "brotinho/pequena/média = 1 sabor" em todas as pizzas?\n\n' +
+                  'Após isso, a IA vai recusar pedidos de meia-a-meia nesses tamanhos. ' +
+                  'Tamanhos diferentes (grande, gigante etc.) não são afetados.',
+              )
+            ) {
+              bulkAllowsHalf.mutate()
+            }
+          }}
+          disabled={bulkAllowsHalf.isPending}
+          className="btn-ghost flex items-center gap-2 text-sm disabled:opacity-50"
+          title="Define que brotinho/pequena/média não aceitam meia-a-meia em todas as pizzas"
+        >
+          <Wrench size={14} /> Brotinho 1 sabor
+        </button>
         <button onClick={onNew} className="btn-primary flex items-center gap-2 text-sm">
           <Plus size={16} /> Novo Produto
         </button>
@@ -159,6 +201,40 @@ export default function Menu() {
               padrões em <code>Configurações → Bot</code> é usado enquanto isso.
             </span>
           </div>
+        </div>
+      )}
+
+      {warnings.length > 0 && (
+        <div className="glass-card p-3 border-orange-500/30 bg-orange-500/5">
+          <div className="flex items-start gap-3 mb-2">
+            <AlertCircle size={18} className="text-orange-400 shrink-0 mt-0.5" />
+            <div className="text-sm flex-1">
+              <span className="text-orange-300 font-medium">
+                {warnings.length} aviso(s) de dados — revise antes da IA cotar pra cliente.
+              </span>
+            </div>
+          </div>
+          <ul className="text-xs text-white/70 space-y-1 ml-7 max-h-32 overflow-y-auto">
+            {warnings.slice(0, 8).map((w, i) => (
+              <li key={i}>
+                <button
+                  onClick={() => {
+                    const p = products.find((pp) => pp.id === w.product_id)
+                    if (p) onEdit(p)
+                  }}
+                  className="text-left hover:text-orange-200 transition-colors"
+                >
+                  <span className="font-medium">{w.name}:</span>{' '}
+                  <span className="text-white/60">{w.message}</span>
+                </button>
+              </li>
+            ))}
+            {warnings.length > 8 && (
+              <li className="text-white/40 italic">
+                … e mais {warnings.length - 8}
+              </li>
+            )}
+          </ul>
         </div>
       )}
 

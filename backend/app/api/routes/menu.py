@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.deps import get_current_user
 from app.database import get_db
@@ -224,6 +226,151 @@ async def list_missing_tax(db: AsyncSession = Depends(get_db)):
         }
         for p in items
     ]
+
+
+# ---------- Operator bulk tools (registered before {prod_id} so the
+# literal segments aren't parsed as ints) ----------
+
+
+class BulkAllowsHalfRequest(BaseModel):
+    """Apply allows_half=<value> to every size whose name matches."""
+    size_names: List[str] = Field(..., min_length=1)
+    allows_half: bool
+
+
+@router.post("/products/bulk-allows-half")
+async def bulk_allows_half(
+    payload: BulkAllowsHalfRequest, db: AsyncSession = Depends(get_db)
+):
+    """
+    Pizzaria-wide rule: e.g. "brotinho is always 1-flavor". Walks every
+    pizza, sets allows_half on each matching size (case-insensitive),
+    and returns the count of products that actually changed.
+    """
+    targets = {n.lower() for n in payload.size_names}
+    products = (
+        await db.execute(select(Product).where(Product.is_pizza.is_(True)))
+    ).scalars().all()
+    affected = 0
+    for p in products:
+        new_sizes = list(p.sizes or [])
+        changed = False
+        for s in new_sizes:
+            if isinstance(s, dict) and s.get("size", "").lower() in targets:
+                if s.get("allows_half") is not payload.allows_half:
+                    s["allows_half"] = payload.allows_half
+                    changed = True
+        if changed:
+            p.sizes = new_sizes
+            flag_modified(p, "sizes")
+            affected += 1
+    await db.commit()
+    return {"products_affected": affected, "size_names": payload.size_names}
+
+
+@router.post("/products/{prod_id}/replicate-options")
+async def replicate_options(prod_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Copy this pizza's available_crusts and available_extras to every other
+    active pizza. Lets the operator configure one pizza fully and propagate
+    instead of editing 50 cards by hand.
+    """
+    src = (
+        await db.execute(select(Product).where(Product.id == prod_id))
+    ).scalar_one_or_none()
+    if not src:
+        raise HTTPException(404, "Product not found")
+    if not src.is_pizza:
+        raise HTTPException(400, "Source must be a pizza")
+    targets = (
+        await db.execute(
+            select(Product).where(
+                Product.is_pizza.is_(True),
+                Product.is_active.is_(True),
+                Product.id != prod_id,
+            )
+        )
+    ).scalars().all()
+    for t in targets:
+        t.available_crusts = list(src.available_crusts or [])
+        t.available_extras = list(src.available_extras or [])
+        flag_modified(t, "available_crusts")
+        flag_modified(t, "available_extras")
+    await db.commit()
+    return {"products_affected": len(targets), "source": src.name}
+
+
+@router.get("/products/data-warnings")
+async def data_warnings(db: AsyncSession = Depends(get_db)):
+    """
+    Surface obvious data-entry mistakes the operator should review before the
+    bot starts quoting wrong prices. Active products only.
+    """
+    products = (
+        await db.execute(select(Product).where(Product.is_active.is_(True)))
+    ).scalars().all()
+    out: list[dict] = []
+
+    for p in products:
+        # Pizza without crusts is almost always a forgotten field.
+        if p.is_pizza and not (p.available_crusts or []):
+            out.append({
+                "product_id": p.id,
+                "name": p.name,
+                "type": "pizza_without_crusts",
+                "message": "Pizza sem bordas cadastradas",
+            })
+
+        # Pizza marked as half-allowed but no size accepts it (post-0011 this
+        # should never happen, but a corrupt manual edit could create it).
+        if p.is_pizza and p.allows_half:
+            has_half = any(
+                isinstance(s, dict) and s.get("allows_half")
+                for s in (p.sizes or [])
+            )
+            if not has_half:
+                out.append({
+                    "product_id": p.id,
+                    "name": p.name,
+                    "type": "no_half_size",
+                    "message": "Pizza marcada como meia-a-meia mas nenhum tamanho permite",
+                })
+
+        # Suspicious option prices: > 70% of the size's base price is almost
+        # certainly a typo (e.g. R$ 109,80 for a R$ 35 brotinho border).
+        for s in (p.sizes or []):
+            if not isinstance(s, dict):
+                continue
+            base = float(s.get("price") or 0)
+            sn = s.get("size", "")
+            if base <= 0 or not sn:
+                continue
+            for c in (p.available_crusts or []):
+                cp = float(((c.get("prices") or {}) if isinstance(c, dict) else {}).get(sn, 0) or 0)
+                if cp > base * 0.7:
+                    out.append({
+                        "product_id": p.id,
+                        "name": p.name,
+                        "type": "crust_price_suspicious",
+                        "message": (
+                            f"Borda '{c.get('name')}' R$ {cp:.2f} é >70% do "
+                            f"preço da pizza ({sn} R$ {base:.2f})"
+                        ).replace(".", ","),
+                    })
+            for e in (p.available_extras or []):
+                ep = float(((e.get("prices") or {}) if isinstance(e, dict) else {}).get(sn, 0) or 0)
+                if ep > base * 0.5:
+                    out.append({
+                        "product_id": p.id,
+                        "name": p.name,
+                        "type": "extra_price_suspicious",
+                        "message": (
+                            f"Adicional '{e.get('name')}' R$ {ep:.2f} é >50% do "
+                            f"preço da pizza ({sn} R$ {base:.2f})"
+                        ).replace(".", ","),
+                    })
+
+    return out
 
 
 @router.get("/products/{prod_id}", response_model=ProductOut)

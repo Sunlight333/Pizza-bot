@@ -31,4 +31,12 @@ export const menuApi = {
       })
       .then((r) => r.data)
   },
+
+  bulkAllowsHalf: ({ size_names, allows_half }) =>
+    api
+      .post('/api/menu/products/bulk-allows-half', { size_names, allows_half })
+      .then((r) => r.data),
+  replicateOptions: (id) =>
+    api.post(`/api/menu/products/${id}/replicate-options`).then((r) => r.data),
+  dataWarnings: () => api.get('/api/menu/products/data-warnings').then((r) => r.data),
 }
