@@ -63,6 +63,7 @@ async def list_orders(
     customer_id: Optional[int] = None,
     date_from: Optional[datetime] = None,
     date_to: Optional[datetime] = None,
+    search: Optional[str] = Query(None, min_length=1, max_length=120),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -78,6 +79,19 @@ async def list_orders(
         q = q.where(Order.created_at >= date_from)
     if date_to:
         q = q.where(Order.created_at <= date_to)
+    if search:
+        # Match a numeric order number, the phone (most common operator query),
+        # or a free-text fragment in address/observation.
+        from sqlalchemy import or_
+        like = f"%{search}%"
+        clauses = [
+            Order.customer_phone.ilike(like),
+            Order.delivery_address.ilike(like),
+            Order.observation.ilike(like),
+        ]
+        if search.strip().isdigit():
+            clauses.append(Order.order_number == int(search.strip()))
+        q = q.where(or_(*clauses))
     q = q.order_by(Order.created_at.desc()).limit(limit).offset(offset)
     res = await db.execute(q)
     return [_serialize_order(o) for o in res.scalars().all()]
