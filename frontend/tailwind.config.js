@@ -8,11 +8,17 @@ export default {
         secondary: '#1A1A2E',
         accent: '#FFD700',
         success: '#00C853',
+        whatsapp: '#25D366',
         bg: {
           DEFAULT: '#0F0F23',
           surface: '#16213E',
           card: '#1A1A3E',
         },
+        // Landing-page warm palette
+        cream: '#F8F1E4',
+        offwhite: '#FFFCF7',
+        charcoal: '#1F1815',
+        ovenred: '#8B1A1A',
         glass: {
           border: 'rgba(255,255,255,0.12)',
         },
@@ -20,6 +26,7 @@ export default {
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
         display: ['"Space Grotesk"', 'Inter', 'system-ui', 'sans-serif'],
+        serif: ['"Playfair Display"', 'Georgia', 'serif'],
       },
       backgroundImage: {
         'glass-gradient':
