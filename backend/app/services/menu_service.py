@@ -182,8 +182,42 @@ def build_pizza_description(
     return " ".join(parts)
 
 
+def _options_signature(options) -> tuple:
+    """Hashable representation of an option list, ignoring iteration order."""
+    sig = []
+    for o in options or []:
+        name = _option_name(o).strip().lower()
+        if not name:
+            continue
+        prices = o.get("prices") if isinstance(o, dict) else None
+        if isinstance(prices, dict):
+            price_sig = tuple(sorted((str(k).lower(), float(v or 0)) for k, v in prices.items()))
+        else:
+            price_sig = ()
+        sig.append((name, price_sig))
+    sig.sort()
+    return tuple(sig)
+
+
+def _render_option_block(options, size_names: List[str]) -> str:
+    """One-line render of [{name,prices}] used by both the shared block and
+    per-pizza overrides."""
+    parts = [_option_render_for_bot(o, size_names) for o in options or []]
+    parts = [x for x in parts if x]
+    return ", ".join(parts)
+
+
 async def get_menu_for_bot(db: AsyncSession) -> str:
-    """Render the active menu as a compact text block for the GPT system prompt."""
+    """Render the active menu as a compact text block for the GPT system prompt.
+
+    Bordas and adicionais lists are normally identical across every pizza on a
+    pizzaria's menu, so emitting them per-product (which is what we used to do)
+    blew the per-request token budget — for 95 active pizzas with 41 extras
+    each, the menu alone reached ~56k tokens. This rewrite finds the most
+    common signature for crusts + extras across all pizzas, prints it ONCE in
+    a shared block, and only emits per-pizza lists when a product deviates
+    from the default. Same information, ~5x smaller in the typical case.
+    """
     from app.models.category import Category
 
     cats_result = await db.execute(
@@ -198,7 +232,59 @@ async def get_menu_for_bot(db: AsyncSession) -> str:
     for p in products:
         by_cat.setdefault(p.category_id, []).append(p)
 
+    # Identify the dominant crust/extra signature among pizzas. If a clear
+    # majority shares one, we emit it once at the top and skip per-pizza
+    # repetition. Non-pizza products are excluded from the analysis since
+    # they typically don't carry crusts/extras at all.
+    pizzas = [p for p in products if p.is_pizza]
+    crust_default_sig = ()
+    extra_default_sig = ()
+    crust_default_render = ""
+    extra_default_render = ""
+    crust_default_size_names: List[str] = []
+    extra_default_size_names: List[str] = []
+    if pizzas:
+        from collections import Counter
+
+        crust_sigs = Counter(_options_signature(p.available_crusts) for p in pizzas)
+        extra_sigs = Counter(_options_signature(p.available_extras) for p in pizzas)
+        if crust_sigs:
+            crust_default_sig, crust_count = crust_sigs.most_common(1)[0]
+            # Only treat as default if it covers a majority — avoids hiding
+            # information when sets vary widely.
+            if crust_count >= max(2, len(pizzas) // 2):
+                # Pick a real product matching this sig to render from (so the
+                # original price-map shape and order are preserved).
+                ref = next(p for p in pizzas if _options_signature(p.available_crusts) == crust_default_sig)
+                crust_default_size_names = [
+                    s["size"] for s in (ref.sizes or []) if isinstance(s, dict) and s.get("size")
+                ]
+                crust_default_render = _render_option_block(ref.available_crusts, crust_default_size_names)
+            else:
+                crust_default_sig = ()
+        if extra_sigs:
+            extra_default_sig, extra_count = extra_sigs.most_common(1)[0]
+            if extra_count >= max(2, len(pizzas) // 2):
+                ref = next(p for p in pizzas if _options_signature(p.available_extras) == extra_default_sig)
+                extra_default_size_names = [
+                    s["size"] for s in (ref.sizes or []) if isinstance(s, dict) and s.get("size")
+                ]
+                extra_default_render = _render_option_block(ref.available_extras, extra_default_size_names)
+            else:
+                extra_default_sig = ()
+
     lines: list[str] = []
+
+    # Shared bordas/adicionais block — emitted once, applies to every pizza
+    # unless the per-product line says otherwise.
+    if crust_default_render or extra_default_render:
+        lines.append("## Bordas e adicionais (padrão de TODAS as pizzas, salvo indicação contrária)")
+        if crust_default_render:
+            lines.append(f"BORDAS: {crust_default_render}")
+        if extra_default_render:
+            lines.append(f"ADICIONAIS: {extra_default_render}")
+        lines.append("")
+
     for cat in categories:
         items = by_cat.get(cat.id, [])
         if not items:
@@ -225,22 +311,20 @@ async def get_menu_for_bot(db: AsyncSession) -> str:
             size_names = [
                 s["size"] for s in (p.sizes or []) if isinstance(s, dict) and s.get("size")
             ]
+            # Bordas: render inline only if this pizza's set differs from the
+            # shared default. Same logic for adicionais.
             if p.available_crusts:
-                parts = [
-                    _option_render_for_bot(c, size_names)
-                    for c in p.available_crusts
-                ]
-                parts = [x for x in parts if x]
-                if parts:
-                    lines.append("    [bordas: " + ", ".join(parts) + "]")
+                p_crust_sig = _options_signature(p.available_crusts)
+                if p_crust_sig != crust_default_sig:
+                    rendered = _render_option_block(p.available_crusts, size_names)
+                    if rendered:
+                        lines.append("    [bordas próprias: " + rendered + "]")
             if p.available_extras:
-                parts = [
-                    _option_render_for_bot(e, size_names)
-                    for e in p.available_extras
-                ]
-                parts = [x for x in parts if x]
-                if parts:
-                    lines.append("    [adicionais: " + ", ".join(parts) + "]")
+                p_extra_sig = _options_signature(p.available_extras)
+                if p_extra_sig != extra_default_sig:
+                    rendered = _render_option_block(p.available_extras, size_names)
+                    if rendered:
+                        lines.append("    [adicionais próprios: " + rendered + "]")
     return "\n".join(lines).strip()
 
 

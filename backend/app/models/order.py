@@ -71,6 +71,14 @@ class Order(Base, TimestampMixin):
     datacaixa_synced: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     datacaixa_file: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
+    # Pre-order hold: when set in the future, the bridge skips this row until
+    # the time arrives. Null = immediate order (the standard path). Used by
+    # the bot to accept orders outside operating hours and release them when
+    # the pizzaria opens.
+    scheduled_for: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Cupom fiscal — separate from .txt sync. The operator (or Datacaixa, depending
     # on bot_config.fiscal_emission_mode) confirms emission separately.
     fiscal_emitted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)

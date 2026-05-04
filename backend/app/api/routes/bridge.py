@@ -62,8 +62,21 @@ class HeartbeatPayload(BaseModel):
 
 @router.get("/pending", response_model=List[PendingOrder], dependencies=[Depends(_verify_bridge)])
 async def pending_orders(db: AsyncSession = Depends(get_db)):
+    from datetime import datetime, timezone as _tz
+    from sqlalchemy import or_
+
+    # Pre-orders (scheduled_for in the future) are skipped here — the bridge
+    # picks them up on a later poll once the time arrives. No scheduler
+    # required for the release; the filter does the work.
+    now_utc = datetime.now(_tz.utc)
     res = await db.execute(
-        select(Order).where(Order.datacaixa_synced.is_(False)).order_by(Order.created_at).limit(20)
+        select(Order)
+        .where(
+            Order.datacaixa_synced.is_(False),
+            or_(Order.scheduled_for.is_(None), Order.scheduled_for <= now_utc),
+        )
+        .order_by(Order.created_at)
+        .limit(20)
     )
     orders = res.scalars().all()
     out: list[PendingOrder] = []

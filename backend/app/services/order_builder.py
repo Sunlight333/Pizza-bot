@@ -141,7 +141,14 @@ def cart_summary(cart: dict) -> str:
     return "\n".join(lines)
 
 
-async def finalize(db: AsyncSession, *, phone: str, cart: dict, customer_name: Optional[str] = None) -> dict:
+async def finalize(
+    db: AsyncSession,
+    *,
+    phone: str,
+    cart: dict,
+    customer_name: Optional[str] = None,
+    scheduled_for=None,
+) -> dict:
     if not cart.get("items"):
         raise ValueError("Carrinho vazio")
     payment = cart.get("payment_method")
@@ -160,10 +167,16 @@ async def finalize(db: AsyncSession, *, phone: str, cart: dict, customer_name: O
         delivery_fee=float(cart.get("delivery_fee", 0) or 0),
         payment_method=pm,
         observation=cart.get("observation"),
+        scheduled_for=scheduled_for,
     )
 
     from app.services.websocket import manager
     from app.api.routes.orders import _serialize_order
     await manager.broadcast("new_order", _serialize_order(order))
 
-    return {"order_id": order.id, "order_number": order.order_number, "total": float(order.total)}
+    return {
+        "order_id": order.id,
+        "order_number": order.order_number,
+        "total": float(order.total),
+        "scheduled_for": scheduled_for.isoformat() if scheduled_for else None,
+    }

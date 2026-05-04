@@ -39,6 +39,12 @@ class Product(Base, TimestampMixin):
     datacaixa_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Primary image. Kept for backward compatibility; in practice it's
+    # set to image_urls[0] by the API layer when the product is saved.
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # All product images in display order; image_urls[0] is the primary.
+    # Empty list = use the auto pizzaImage fallback. The HIDDEN_IMAGE
+    # sentinel still lives on image_url so behavior of "hide" is unchanged.
+    image_urls: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
 
     category = relationship("Category", back_populates="products", lazy="joined")

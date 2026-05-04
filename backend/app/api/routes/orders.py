@@ -50,6 +50,7 @@ def _serialize_order(order: Order) -> dict:
         "datacaixa_file": order.datacaixa_file,
         "fiscal_emitted": order.fiscal_emitted,
         "fiscal_emitted_at": order.fiscal_emitted_at.isoformat() if order.fiscal_emitted_at else None,
+        "scheduled_for": order.scheduled_for.isoformat() if order.scheduled_for else None,
         "items": _serialize_items(order),
         "created_at": order.created_at.isoformat(),
         "updated_at": order.updated_at.isoformat(),

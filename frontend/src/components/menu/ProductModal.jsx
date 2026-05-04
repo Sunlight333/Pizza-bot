@@ -30,6 +30,7 @@ const empty = {
   datacaixa_code: '',
   is_active: true,
   image_url: '',
+  image_urls: [],
 }
 
 export default function ProductModal({ open, onClose, onSave, product, categories }) {
@@ -80,10 +81,21 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
             allows_half: s.allows_half == null ? productAllowsHalf : !!s.allows_half,
           }))
         : empty.sizes
+      // Image gallery: prefer image_urls; if absent (legacy data) fall back
+      // to a single-element list from image_url. Never include the hidden
+      // sentinel in the gallery — it stays on image_url alone.
+      const HIDDEN = HIDDEN_IMAGE
+      let gallery = Array.isArray(product.image_urls)
+        ? product.image_urls.filter((u) => u && u !== HIDDEN)
+        : []
+      if (gallery.length === 0 && product.image_url && product.image_url !== HIDDEN) {
+        gallery = [product.image_url]
+      }
       setData({
         ...empty,
         ...product,
         sizes,
+        image_urls: gallery,
         available_extras: normalize(product.available_extras),
         available_crusts: normalize(product.available_crusts),
       })
@@ -92,17 +104,34 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
     }
   }, [product, open])
 
-  const handleImageFile = async (file) => {
-    if (!file) return
-    if (!file.type?.startsWith('image/')) {
-      toast.error('Selecione um arquivo de imagem')
+  const handleImageFiles = async (fileList) => {
+    if (!fileList || fileList.length === 0) return
+    const files = Array.from(fileList).filter((f) => f.type?.startsWith('image/'))
+    if (files.length === 0) {
+      toast.error('Selecione arquivos de imagem')
       return
     }
     setUploading(true)
     try {
-      const { url } = await menuApi.uploadImage(file)
-      set('image_url', url)
-      toast.success('Foto carregada')
+      // Upload sequentially so the toasts/order match what the operator sees;
+      // ~7 seconds per dozen photos is fine for the volumes in scope.
+      const uploaded = []
+      for (const file of files) {
+        const { url } = await menuApi.uploadImage(file)
+        uploaded.push(url)
+      }
+      setData((d) => ({
+        ...d,
+        // Append new uploads after the existing gallery; clear the hidden
+        // sentinel since the operator just opted back into showing photos.
+        image_url: d.image_url === HIDDEN_IMAGE ? '' : d.image_url,
+        image_urls: [...(d.image_urls || []), ...uploaded],
+      }))
+      toast.success(
+        uploaded.length === 1
+          ? 'Foto carregada'
+          : `${uploaded.length} fotos carregadas`,
+      )
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Falha ao enviar imagem')
     } finally {
@@ -110,6 +139,23 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
       if (uploadInputRef.current) uploadInputRef.current.value = ''
       if (cameraInputRef.current) cameraInputRef.current.value = ''
     }
+  }
+
+  const removeImageAt = (idx) => {
+    setData((d) => ({
+      ...d,
+      image_urls: (d.image_urls || []).filter((_, i) => i !== idx),
+    }))
+  }
+
+  const setPrimaryImage = (idx) => {
+    setData((d) => {
+      const arr = [...(d.image_urls || [])]
+      if (idx <= 0 || idx >= arr.length) return d
+      const [picked] = arr.splice(idx, 1)
+      arr.unshift(picked)
+      return { ...d, image_urls: arr }
+    })
   }
 
   const set = (k, v) => setData((d) => ({ ...d, [k]: v }))
@@ -328,37 +374,50 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
               {(() => {
                 const catName = categories.find((c) => c.id === Number(data.category_id))?.name
                 const autoSrc = pizzaImage(data.name, catName)
-                const isHidden = data.image_url === HIDDEN_IMAGE
-                const isCustom = !!data.image_url && !isHidden
-                const previewSrc = isCustom ? resolveMediaUrl(data.image_url) : autoSrc
+                const gallery = data.image_urls || []
+                const isHidden = data.image_url === HIDDEN_IMAGE && gallery.length === 0
+                const isCustom = gallery.length > 0
+                const primarySrc = isCustom ? resolveMediaUrl(gallery[0]) : autoSrc
                 const status = isHidden
                   ? 'Imagem oculta — não aparece no cardápio nem nas mensagens.'
                   : isCustom
-                    ? 'Foto personalizada — sobrescreve a automática.'
+                    ? gallery.length === 1
+                      ? '1 foto personalizada — sobrescreve a automática.'
+                      : `${gallery.length} fotos. A primeira é a principal — clique em outra para promover, ou no X para remover.`
                     : `Automática via pizzaImage("${data.name || '…'}").`
                 return (
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="text-xs text-white/50">Foto</label>
+                      <label className="text-xs text-white/50">Fotos</label>
                       <div className="flex items-center gap-1">
                         {isCustom && (
                           <button
-                            onClick={() => set('image_url', '')}
+                            onClick={() =>
+                              setData((d) => ({
+                                ...d,
+                                image_urls: [],
+                                image_url: '',
+                              }))
+                            }
                             className="btn-ghost text-xs py-1 px-2 flex items-center gap-1"
-                            title="Voltar para a foto automática (pizzaImage)"
+                            title="Apaga as fotos personalizadas e volta para a foto automática"
                           >
                             <RotateCcw size={12} /> Automática
                           </button>
                         )}
                         <button
                           onClick={() =>
-                            set('image_url', isHidden ? '' : HIDDEN_IMAGE)
+                            setData((d) =>
+                              isHidden
+                                ? { ...d, image_url: '' }
+                                : { ...d, image_url: HIDDEN_IMAGE, image_urls: [] },
+                            )
                           }
                           className="btn-ghost text-xs py-1 px-2 flex items-center gap-1"
                           title={
                             isHidden
-                              ? 'Mostrar a imagem novamente'
-                              : 'Esconder a imagem (nem a automática nem a personalizada serão exibidas)'
+                              ? 'Mostrar imagem novamente'
+                              : 'Esconder a imagem (nem a automática nem as personalizadas aparecem)'
                           }
                         >
                           {isHidden ? (
@@ -382,7 +441,7 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
                         </div>
                       ) : (
                         <img
-                          src={previewSrc}
+                          src={primarySrc}
                           alt=""
                           onError={(e) => {
                             if (e.currentTarget.dataset.fallback === '1') return
@@ -397,6 +456,11 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
                           Automática
                         </span>
                       )}
+                      {isCustom && (
+                        <span className="absolute top-2 left-2 text-[10px] uppercase tracking-wide bg-primary/80 text-white rounded px-2 py-0.5">
+                          Principal
+                        </span>
+                      )}
                       {uploading && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
                           <Loader2 size={28} className="animate-spin text-white" />
@@ -404,12 +468,59 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
                       )}
                     </div>
 
+                    {/*
+                      Gallery thumbnails. Index 0 is the primary (already shown
+                      above as the big preview), but it's also rendered here so
+                      the operator sees the full set in one strip. Click to
+                      promote a non-primary; click X to remove. Keeps a tight
+                      4-column grid; scrolls vertically beyond ~12 images.
+                    */}
+                    {gallery.length > 0 && (
+                      <div className="grid grid-cols-4 gap-2 mb-3 max-h-40 overflow-y-auto">
+                        {gallery.map((url, i) => (
+                          <div
+                            key={url + i}
+                            className={`relative aspect-square rounded-lg overflow-hidden ring-1 ${
+                              i === 0
+                                ? 'ring-primary/60'
+                                : 'ring-glass-border hover:ring-primary/40 cursor-pointer'
+                            }`}
+                            onClick={() => i !== 0 && setPrimaryImage(i)}
+                            title={i === 0 ? 'Foto principal' : 'Tornar principal'}
+                          >
+                            <img
+                              src={resolveMediaUrl(url)}
+                              alt=""
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                if (e.currentTarget.dataset.fallback === '1') return
+                                e.currentTarget.dataset.fallback = '1'
+                                e.currentTarget.src = ASSETS.menu.productPlaceholder
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                removeImageAt(i)
+                              }}
+                              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-white/90 hover:bg-red-500 flex items-center justify-center"
+                              title="Remover esta foto"
+                            >
+                              <X size={11} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     <input
                       ref={uploadInputRef}
                       type="file"
                       accept="image/*"
+                      multiple
                       className="hidden"
-                      onChange={(e) => handleImageFile(e.target.files?.[0])}
+                      onChange={(e) => handleImageFiles(e.target.files)}
                     />
                     <input
                       ref={cameraInputRef}
@@ -417,7 +528,7 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
                       accept="image/*"
                       capture="environment"
                       className="hidden"
-                      onChange={(e) => handleImageFile(e.target.files?.[0])}
+                      onChange={(e) => handleImageFiles(e.target.files)}
                     />
                     <div className="grid grid-cols-2 gap-2 mb-2">
                       <button
@@ -426,7 +537,7 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
                         disabled={uploading}
                         className="btn-ghost text-xs py-2 flex items-center justify-center gap-1.5 disabled:opacity-50"
                       >
-                        <Upload size={14} /> Carregar do dispositivo
+                        <Upload size={14} /> Carregar fotos
                       </button>
                       <button
                         type="button"
@@ -438,14 +549,6 @@ export default function ProductModal({ open, onClose, onSave, product, categorie
                       </button>
                     </div>
 
-                    <input
-                      type="text"
-                      placeholder="/menu/savory/...jpeg ou URL completa (deixe vazio para foto automática)"
-                      value={isHidden ? '' : data.image_url || ''}
-                      disabled={isHidden}
-                      onChange={(e) => set('image_url', e.target.value)}
-                      className="input-field text-xs disabled:opacity-50"
-                    />
                     <p className="text-[10px] text-white/40 mt-1.5 leading-snug">{status}</p>
                   </div>
                 )

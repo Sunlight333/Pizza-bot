@@ -45,6 +45,7 @@ async def create_order(
     delivery_fee: float,
     payment_method: PaymentMethod,
     observation: str | None,
+    scheduled_for: datetime | None = None,
 ) -> Order:
     items_list = [dict(i) for i in items_data]
     if not items_list:
@@ -74,6 +75,7 @@ async def create_order(
         delivery_neighborhood=delivery_neighborhood,
         customer_phone=customer_phone,
         observation=observation,
+        scheduled_for=scheduled_for,
     )
     db.add(order)
     await db.flush()

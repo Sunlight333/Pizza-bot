@@ -7,6 +7,7 @@ a plain-text reply to send back.
 """
 import json
 import logging
+from datetime import timezone
 from typing import Any, Optional
 
 from openai import AsyncOpenAI
@@ -236,6 +237,82 @@ async def _add_token_usage(tokens: int) -> None:
     await client.expire(key, 36 * 3600)
 
 
+# ---------------------------------------------------------------------------
+# Token / abuse barriers
+#
+# Three layers, all rejecting BEFORE any OpenAI call so they cost nothing:
+#   A — input size cap per message
+#   B — per-call token budget (estimated; defends the per-minute org limit)
+#   C — per-phone hourly message cap (defends the daily budget from spam)
+#
+# Every barrier returns a friendly Portuguese message to the customer. Nothing
+# technical (no "rate limit", "tokens", "API") ever leaks to WhatsApp.
+# ---------------------------------------------------------------------------
+
+# Hard caps. Conservative on purpose — operator can loosen later if traffic
+# patterns warrant. The TPM cap is well below the org's 30k TPM ceiling so a
+# burst of two near-simultaneous messages doesn't both pass and then 429.
+MAX_INBOUND_CHARS = 1500       # ~375 tokens; longer = ask user to split
+TPM_SAFE_LIMIT_TOKENS = 25_000 # below the 30k TPM org cap, with margin
+PER_PHONE_HOURLY_CAP = 30      # > a real order with chit-chat, < spam
+
+
+def _estimate_messages_tokens(messages: list[dict]) -> int:
+    """Conservative token approximation for a chat-completions payload.
+
+    Real tokenization needs tiktoken; we don't add the dependency just for
+    a safety check. Char/4 + small per-message overhead is a known-good rule
+    of thumb that errs on the side of refusing borderline requests, which is
+    exactly what this gate is for.
+    """
+    total = 0
+    for m in messages:
+        content = m.get("content") or ""
+        if isinstance(content, list):
+            # Some payloads use the content-parts shape
+            content = " ".join(p.get("text", "") for p in content if isinstance(p, dict))
+        total += len(str(content)) // 4
+        total += 4  # role + structural overhead per message
+    return total
+
+
+async def _phone_rate_exceeded(phone: str, cap: int = PER_PHONE_HOURLY_CAP) -> bool:
+    """Sliding 1-hour window of messages from a single phone, in Redis.
+
+    Counts BEFORE recording the current message, so the cap is read as
+    "more than {cap} messages already in the last hour" — passing it makes
+    the bot hand off to a human instead of continuing to burn GPT calls.
+    """
+    if cap <= 0:
+        return False
+    import time
+    import secrets as _secrets
+    import redis.asyncio as redis
+
+    client = redis.from_url(settings.redis_url, decode_responses=True)
+    key = f"rate:msgs:{phone}"
+    now = int(time.time())
+    window = 3600  # 1h
+    cutoff = now - window
+    try:
+        # Drop entries older than the window
+        await client.zremrangebyscore(key, 0, cutoff)
+        count = await client.zcard(key)
+        if count >= cap:
+            return True
+        # Record this message and refresh TTL
+        # (timestamp + nonce keeps members unique)
+        member = f"{now}:{_secrets.token_hex(4)}"
+        await client.zadd(key, {member: now})
+        await client.expire(key, window * 2)
+    except Exception:
+        # On Redis failure, fail open — better to risk one extra GPT call than
+        # to silently refuse paying customers. The daily budget still caps total.
+        log.exception("phone rate limit check failed (failing open)")
+        return False
+    return False
+
+
 async def _persist_message(
     db: AsyncSession,
     *,
@@ -255,6 +332,52 @@ async def _persist_message(
         )
     )
     await db.commit()
+
+
+def _local_now():
+    """Bot operates in São Paulo time, regardless of server TZ."""
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import datetime
+        return datetime.now(ZoneInfo("America/Sao_Paulo"))
+    except Exception:
+        from datetime import datetime
+        return datetime.utcnow()
+
+
+def _next_opening_at(cfg, now_local):
+    """Return the next datetime the pizzaria will be open, looking up to 7 days
+    ahead. Hour granularity matches BotConfig (working_hours_start/end ints)."""
+    from datetime import datetime, time, timedelta
+
+    closed_days = set(cfg.closed_weekdays or [])
+    h_start = int(cfg.working_hours_start or 0)
+    h_end = int(cfg.working_hours_end or 24)
+    if h_start >= h_end:
+        return None  # malformed config; let caller decide
+
+    # Today before opening?
+    if (
+        now_local.weekday() not in closed_days
+        and now_local.hour < h_start
+    ):
+        return now_local.replace(hour=h_start, minute=0, second=0, microsecond=0)
+
+    # Walk forward day by day.
+    candidate = now_local + timedelta(days=1)
+    for _ in range(7):
+        if candidate.weekday() not in closed_days:
+            return candidate.replace(hour=h_start, minute=0, second=0, microsecond=0)
+        candidate += timedelta(days=1)
+    return None
+
+
+def _is_open_now(cfg, now_local) -> bool:
+    closed_today = now_local.weekday() in (cfg.closed_weekdays or [])
+    h_start = int(cfg.working_hours_start or 0)
+    h_end = int(cfg.working_hours_end or 24)
+    in_hours = h_start <= now_local.hour < h_end
+    return not closed_today and in_hours
 
 
 async def _build_system_prompt(db: AsyncSession, state: dict) -> str:
@@ -311,7 +434,36 @@ async def _build_system_prompt(db: AsyncSession, state: dict) -> str:
     closed_block = ""
     if closed:
         closed_names = ", ".join(DOW_LABELS[d] for d in closed if 0 <= d <= 6)
-        closed_block = f"\nFECHADO: {closed_names}. Nesses dias responda: \"{cfg.off_hours_message}\""
+        closed_block = f"\nFECHADO: {closed_names}."
+
+    # Open/closed state at THIS moment determines whether the bot can confirm
+    # an order immediately or has to schedule it for the next opening.
+    now_local = _local_now()
+    is_open = _is_open_now(cfg, now_local)
+    open_state_block = ""
+    if not is_open:
+        next_open = _next_opening_at(cfg, now_local)
+        if next_open:
+            day_label = DOW_LABELS[next_open.weekday()]
+            same_day = next_open.date() == now_local.date()
+            when = (
+                f"hoje às {next_open.hour}h"
+                if same_day
+                else f"{day_label} às {next_open.hour}h"
+            )
+        else:
+            when = "no próximo expediente"
+        open_state_block = (
+            f"\n\nESTADO ATUAL: ESTAMOS FECHADOS AGORA. Reabrimos {when}."
+            "\nVocê PODE seguir atendendo normalmente: monte o pedido, pegue endereço, "
+            "forma de pagamento e confirme. Quando o cliente confirmar (confirm_order), o "
+            "sistema vai AGENDAR o pedido para sair quando abrirmos. "
+            "ANTES de finalizar, deixe claro pro cliente: \"Anoto seu pedido e ele entra "
+            "na fila pra ser preparado quando abrirmos " + when + "\". "
+            "Pergunte se está OK esperar até lá. Se ele preferir não esperar, agradeça e "
+            "convide a voltar quando abrirmos. Não invente outro horário; abrimos exatamente "
+            f"{when}."
+        )
 
     bot_name = cfg.bot_name or "Bia"
 
@@ -346,7 +498,7 @@ ANÁLISE ANTES DE RESPONDER:
 - Use o histórico de conversa e o estado do carrinho para contextualizar.
 
 CUMPRIMENTO PADRÃO (use só na primeira interação): {cfg.greeting}
-HORÁRIO: {cfg.working_hours_start}h às {cfg.working_hours_end}h. Fora desse horário responda: "{cfg.off_hours_message}"{closed_block}
+HORÁRIO: {cfg.working_hours_start}h às {cfg.working_hours_end}h.{closed_block}{open_state_block}
 LIMITE DE ITENS POR PEDIDO: {cfg.max_items_per_order}
 
 REGRAS IMPORTANTES:
@@ -451,9 +603,42 @@ async def _execute_tool_call(
 
         if name == "confirm_order":
             customer_name = state.get("customer_name")
-            result = await order_builder.finalize(db, phone=phone, cart=cart, customer_name=customer_name)
+            # If we're outside operating hours, hold the order until the
+            # next opening so the bridge doesn't push it to Datacaixa during
+            # closed time. The bot was already told in the system prompt to
+            # warn the customer; we just stamp the time here.
+            cfg = await _get_bot_config(db)
+            now_local = _local_now()
+            scheduled_for = None
+            if not _is_open_now(cfg, now_local):
+                next_open = _next_opening_at(cfg, now_local)
+                if next_open is not None:
+                    # Persist as UTC for consistency with other timestamps.
+                    scheduled_for = next_open.astimezone(timezone.utc)
+            result = await order_builder.finalize(
+                db,
+                phone=phone,
+                cart=cart,
+                customer_name=customer_name,
+                scheduled_for=scheduled_for,
+            )
             state["state"] = "completed"
             state["cart"] = {"items": []}
+            if scheduled_for:
+                from zoneinfo import ZoneInfo
+                local_open = scheduled_for.astimezone(ZoneInfo("America/Sao_Paulo"))
+                DOW = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
+                same_day = local_open.date() == now_local.date()
+                when = (
+                    f"hoje às {local_open.hour}h"
+                    if same_day
+                    else f"{DOW[local_open.weekday()]} às {local_open.hour}h"
+                )
+                return (
+                    f"OK — pedido #{result['order_number']:03d} AGENDADO para {when}, "
+                    f"total R$ {result['total']:.2f}. Avise o cliente que vai ser preparado "
+                    f"quando abrirmos e se despeça."
+                )
             return (
                 f"OK — pedido #{result['order_number']:03d} confirmado, "
                 f"total R$ {result['total']:.2f}. Avise o cliente e se despeça."
@@ -543,44 +728,53 @@ async def process_incoming(
     if customer.name and not state.get("customer_name"):
         state["customer_name"] = customer.name
 
-    cfg = await _get_bot_config(db)
-
-    # Hard off-hours / closed-day gate — short-circuits BEFORE any GPT call.
-    # Saves OpenAI tokens and responds instantly when the pizzaria is closed.
-    # Compares in São Paulo local time (the relevant zone for Marcio).
-    try:
-        from zoneinfo import ZoneInfo
-        from datetime import datetime
-        now_local = datetime.now(ZoneInfo("America/Sao_Paulo"))
-    except Exception:
-        from datetime import datetime
-        now_local = datetime.utcnow()
-
-    closed_today = (now_local.weekday() in (cfg.closed_weekdays or []))
-    h_start = int(cfg.working_hours_start or 0)
-    h_end = int(cfg.working_hours_end or 24)
-    out_of_hours = not (h_start <= now_local.hour < h_end)
-
-    if closed_today or out_of_hours:
-        msg = cfg.off_hours_message or "Estamos fechados no momento."
-        # Persist + broadcast as a normal turn so the admin sees it
+    # ---------- Barrier A: input size cap ----------
+    # Reject (politely) if a single message — text or transcribed audio —
+    # is so large that just relaying it could blow the per-call token budget.
+    # Costs nothing because we never reach OpenAI.
+    if text and len(text) > MAX_INBOUND_CHARS:
+        log.info(
+            "barrier-A: input too long (%d chars) for %s — refusing politely",
+            len(text), phone,
+        )
+        if is_audio:
+            polite = (
+                "Seu áudio ficou bem comprido 😅 Manda ele em pedaços menores, "
+                "de até um minutinho, que assim eu te entendo direitinho!"
+            )
+        else:
+            polite = (
+                "Foi muita coisa de uma vez 😊 Me manda em partes menores que "
+                "assim eu consigo te ajudar bem!"
+            )
         await _persist_message(
             db, phone=phone, customer_id=customer.id,
             role=MessageRole.user, content=text, is_audio=is_audio,
         )
         await _persist_message(
             db, phone=phone, customer_id=customer.id,
-            role=MessageRole.assistant, content=msg,
+            role=MessageRole.assistant, content=polite,
         )
         try:
             from app.services.websocket import manager
             await manager.broadcast(
                 "chat_message",
-                {"phone": phone, "role": "assistant", "content": msg, "is_audio": False},
+                {"phone": phone, "role": "user", "content": text, "is_audio": is_audio},
+            )
+            await manager.broadcast(
+                "chat_message",
+                {"phone": phone, "role": "assistant", "content": polite, "is_audio": False},
             )
         except Exception:
             pass
-        return msg
+        return polite
+
+    cfg = await _get_bot_config(db)
+
+    # Off-hours behaviour is now SOFT: the bot still goes through GPT and the
+    # full ordering flow, but the system prompt tells it to schedule rather
+    # than confirm immediately, and confirm_order stamps scheduled_for so the
+    # bridge holds the order until the next opening time.
 
     # LGPD: send the privacy notice once per phone, before anything else.
     # This is the FIRST message the bot ever sends to a new customer.
@@ -606,10 +800,48 @@ async def process_incoming(
             pass
         return cfg.privacy_notice
 
+    # ---------- Barrier C: per-phone hourly cap ----------
+    # A single number flooding the bot cannot, by itself, drain the global
+    # daily budget. Once it crosses the hourly cap we hand off to a human
+    # and let the operator decide whether to engage or block.
+    if await _phone_rate_exceeded(phone):
+        log.warning("barrier-C: phone %s exceeded hourly cap — handoff", phone)
+        try:
+            await handoff_svc.trigger_handoff(phone, reason="rate_per_phone")
+        except Exception:
+            log.exception("handoff failed in barrier-C")
+        polite = (
+            "Já trocamos várias mensagens, hein! 😊 "
+            "Vou pedir pra um colega aqui te dar mais atenção. Já já alguém fala com você."
+        )
+        await _persist_message(
+            db, phone=phone, customer_id=customer.id,
+            role=MessageRole.user, content=text, is_audio=is_audio,
+        )
+        await _persist_message(
+            db, phone=phone, customer_id=customer.id,
+            role=MessageRole.assistant, content=polite,
+        )
+        try:
+            from app.services.websocket import manager
+            await manager.broadcast(
+                "chat_message",
+                {"phone": phone, "role": "user", "content": text, "is_audio": is_audio},
+            )
+            await manager.broadcast(
+                "chat_message",
+                {"phone": phone, "role": "assistant", "content": polite, "is_audio": False},
+            )
+        except Exception:
+            pass
+        return polite
+
     # Token-budget guardrail — short-circuit to handoff before paying for another GPT-4o call
     if cfg.daily_token_budget and await _daily_tokens_exceeded(cfg.daily_token_budget):
         log.warning("daily token budget exceeded — auto-handoff for %s", phone)
-        from app.services import handoff as handoff_svc
+        # Note: handoff_svc is already module-level. A local re-import here
+        # used to shadow it as a local variable, which broke Barrier C above
+        # (UnboundLocalError before the line ran).
         await handoff_svc.trigger_handoff(phone, reason="token_budget_exceeded")
         return (
             "Oi! A casa tá cheia hoje 😊 Já já um colega te responde por aqui."
@@ -622,6 +854,43 @@ async def process_incoming(
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     messages.extend(context[-12:])
     messages.append({"role": "user", "content": f"{text}{audio_hint}"})
+
+    # ---------- Barrier B: per-call TPM estimate ----------
+    # Refuse the OpenAI call if the estimated payload alone would already
+    # eat most of the org's per-minute token allowance. Better to ask the
+    # customer to wait a moment than to consume budget on a 429.
+    estimated_in = _estimate_messages_tokens(messages)
+    estimated_total = estimated_in + 700  # max_tokens reserved for the reply
+    if estimated_total > TPM_SAFE_LIMIT_TOKENS:
+        log.warning(
+            "barrier-B: payload ~%d tokens > %d safe limit for %s",
+            estimated_total, TPM_SAFE_LIMIT_TOKENS, phone,
+        )
+        polite = (
+            "Tô com muito atendimento simultâneo agora 🙏 "
+            "Me dá um minutinho que já te respondo direitinho!"
+        )
+        await _persist_message(
+            db, phone=phone, customer_id=customer.id,
+            role=MessageRole.user, content=text, is_audio=is_audio,
+        )
+        await _persist_message(
+            db, phone=phone, customer_id=customer.id,
+            role=MessageRole.assistant, content=polite,
+        )
+        try:
+            from app.services.websocket import manager
+            await manager.broadcast(
+                "chat_message",
+                {"phone": phone, "role": "user", "content": text, "is_audio": is_audio},
+            )
+            await manager.broadcast(
+                "chat_message",
+                {"phone": phone, "role": "assistant", "content": polite, "is_audio": False},
+            )
+        except Exception:
+            pass
+        return polite
 
     try:
         response = await _openai().chat.completions.create(

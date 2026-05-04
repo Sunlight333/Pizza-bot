@@ -12,6 +12,7 @@ import { menuApi } from '@/services/menu'
 import { categoryImage, categoryHero, pizzaImage, ASSETS } from '@/utils/assets'
 import { resolveMediaUrl } from '@/utils/apiUrl'
 import { HIDDEN_IMAGE } from '@/components/menu/ProductModal'
+import MenuCardCarousel from '@/components/menu/MenuCardCarousel'
 
 const brl = (n) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0)
@@ -294,10 +295,19 @@ export default function Menu() {
         <div className="flex flex-wrap gap-4 items-start">
           {filtered.map((p, i) => {
             const catName = categories.find((c) => c.id === p.category_id)?.name
-            const imageHidden = p.image_url === HIDDEN_IMAGE
-            const heroSrc = imageHidden
-              ? null
-              : resolveMediaUrl(p.image_url) || pizzaImage(p.name, catName)
+            const gallery = (Array.isArray(p.image_urls) ? p.image_urls : []).filter(Boolean)
+            const imageHidden = p.image_url === HIDDEN_IMAGE && gallery.length === 0
+            const autoFallback = pizzaImage(p.name, catName)
+            // If a product has no gallery but a single image_url (legacy or
+            // pre-migration), feed that one as the only carousel frame so
+            // the existing photo still shows.
+            const carouselUrls =
+              gallery.length > 0
+                ? gallery
+                : p.image_url && p.image_url !== HIDDEN_IMAGE
+                  ? [p.image_url]
+                  : []
+            const extraCount = Math.max(0, carouselUrls.length - 1)
             return (
             <motion.div
               key={p.id}
@@ -306,25 +316,16 @@ export default function Menu() {
               transition={{ delay: i * 0.03 }}
               className="glass-card overflow-hidden hover:border-primary/30 transition-all hover:-translate-y-0.5 flex flex-col w-64 h-[32rem] shrink-0"
             >
-              <div className="relative w-full h-64 shrink-0 bg-bg/50">
+              <div className="relative w-full h-64 shrink-0 bg-bg/50 overflow-hidden">
                 {imageHidden ? (
                   <div className="absolute inset-0 flex items-center justify-center text-white/30 text-xs">
                     sem imagem
                   </div>
                 ) : (
-                  <img
-                    src={heroSrc}
-                    alt=""
-                    loading="lazy"
-                    onError={(e) => {
-                      // Only swap to the placeholder once — don't loop if the
-                      // placeholder itself fails (which would re-fire onError forever
-                      // and look like a shaking thumbnail).
-                      if (e.currentTarget.dataset.fallback === '1') return
-                      e.currentTarget.dataset.fallback = '1'
-                      e.currentTarget.src = ASSETS.menu.productPlaceholder
-                    }}
-                    className="w-full h-full object-cover"
+                  <MenuCardCarousel
+                    urls={carouselUrls}
+                    fallbackSrc={autoFallback}
+                    alt={p.name}
                   />
                 )}
                 <span
@@ -336,6 +337,14 @@ export default function Menu() {
                 >
                   {p.is_active ? 'Ativo' : 'Inativo'}
                 </span>
+                {extraCount > 0 && !imageHidden && (
+                  <span
+                    className="absolute bottom-2 right-2 text-[10px] px-2 py-0.5 rounded-full bg-black/60 text-white/90 backdrop-blur-sm"
+                    title={`${gallery.length} fotos cadastradas`}
+                  >
+                    +{extraCount} {extraCount === 1 ? 'foto' : 'fotos'}
+                  </span>
+                )}
               </div>
 
               <div className="p-4 flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -350,7 +359,14 @@ export default function Menu() {
                 {p.description && (
                   <p className="text-xs text-white/50 mb-3 line-clamp-2">{p.description}</p>
                 )}
-                <div className="space-y-1 mb-3">
+                {/*
+                  Sizes list scrolls inside the card body so products with
+                  many sizes (Coca-Cola 2L has 8) don't push the action row
+                  out of the visible 256px body. flex-1 + min-h-0 is the
+                  canonical pattern that lets a flex child actually shrink
+                  below its content size and become scrollable.
+                */}
+                <div className="flex-1 min-h-0 overflow-y-auto space-y-1 mb-3 pr-1">
                   {(p.sizes || []).map((s) => (
                     <div key={s.size} className="flex justify-between text-sm">
                       <span className="text-white/60">{s.size}</span>
@@ -358,7 +374,7 @@ export default function Menu() {
                     </div>
                   ))}
                 </div>
-                <div className="flex gap-2 border-t border-glass-border pt-3 mt-auto">
+                <div className="flex gap-2 border-t border-glass-border pt-3 shrink-0">
                   <button onClick={() => onEdit(p)} className="btn-ghost text-xs py-1.5 flex-1 flex items-center justify-center gap-1">
                     <Edit2 size={12} /> Editar
                   </button>

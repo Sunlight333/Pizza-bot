@@ -56,6 +56,7 @@ class OrderOut(BaseModel):
     datacaixa_file: Optional[str]
     fiscal_emitted: bool = False
     fiscal_emitted_at: Optional[datetime] = None
+    scheduled_for: Optional[datetime] = None
     items: List[OrderItemOut] = []
     created_at: datetime
     updated_at: datetime

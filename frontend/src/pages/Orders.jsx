@@ -263,6 +263,24 @@ export default function Orders() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  {o.scheduled_for && new Date(o.scheduled_for) > new Date() && (() => {
+                    // Pre-order: shop was closed when the bot took it; the
+                    // bridge holds it until scheduled_for. Show when it
+                    // releases so the operator knows what's coming.
+                    const dt = new Date(o.scheduled_for)
+                    const sameDay = dt.toDateString() === new Date().toDateString()
+                    const label = sameDay
+                      ? `Agendado ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                      : `Agendado ${dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                    return (
+                      <span
+                        className="text-xs px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-200 ring-1 ring-yellow-500/30"
+                        title={`Será enviado pro Datacaixa em ${dt.toLocaleString('pt-BR')}`}
+                      >
+                        {label}
+                      </span>
+                    )
+                  })()}
                   <span className={`text-xs px-2 py-0.5 rounded-full ${ORDER_STATUS[o.status]?.color}`}>
                     {ORDER_STATUS[o.status]?.label}
                   </span>

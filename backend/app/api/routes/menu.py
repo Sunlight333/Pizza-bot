@@ -381,10 +381,25 @@ async def get_product(prod_id: int, db: AsyncSession = Depends(get_db)):
     return p
 
 
+def _sync_image_url(data: dict) -> None:
+    """Keep the legacy image_url field aligned with image_urls[0] on save.
+    Hidden state (image_url == HIDDEN_IMAGE) is preserved with empty list.
+    """
+    HIDDEN = "__hidden__"
+    if data.get("image_url") == HIDDEN:
+        # Hide explicitly: clear the gallery, keep the sentinel.
+        data["image_urls"] = []
+        return
+    urls = data.get("image_urls")
+    if urls is not None:
+        data["image_url"] = urls[0] if urls else (data.get("image_url") or None)
+
+
 @router.post("/products", response_model=ProductOut, status_code=status.HTTP_201_CREATED)
 async def create_product(payload: ProductCreate, db: AsyncSession = Depends(get_db)):
     data = payload.model_dump()
     data["sizes"] = [s if isinstance(s, dict) else s.model_dump() for s in data.get("sizes", [])]
+    _sync_image_url(data)
     p = Product(**data)
     db.add(p)
     await db.commit()
@@ -400,6 +415,7 @@ async def update_product(prod_id: int, payload: ProductUpdate, db: AsyncSession 
     data = payload.model_dump(exclude_unset=True)
     if "sizes" in data and data["sizes"] is not None:
         data["sizes"] = [s if isinstance(s, dict) else s.model_dump() for s in data["sizes"]]
+    _sync_image_url(data)
     for k, v in data.items():
         setattr(p, k, v)
     await db.commit()

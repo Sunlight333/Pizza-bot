@@ -101,7 +101,11 @@ class ProductBase(BaseModel):
     origin_code: Optional[str] = None
     datacaixa_code: Optional[str] = None
     is_active: bool = True
+    # image_url is the primary photo (kept for back-compat with the bot menu
+    # render and the old single-image card path). image_urls is the canonical
+    # gallery; the API layer keeps image_url = image_urls[0] on save.
     image_url: Optional[str] = None
+    image_urls: List[str] = []
 
 
 class ProductCreate(ProductBase):
@@ -131,6 +135,7 @@ class ProductUpdate(BaseModel):
     datacaixa_code: Optional[str] = None
     is_active: Optional[bool] = None
     image_url: Optional[str] = None
+    image_urls: Optional[List[str]] = None
 
 
 class ProductOut(ProductBase):
