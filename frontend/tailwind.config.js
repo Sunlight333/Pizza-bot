@@ -24,9 +24,19 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        display: ['"Space Grotesk"', 'Inter', 'system-ui', 'sans-serif'],
+        // Admin uses a single sans-serif system (Geist + Inter) for a clean,
+        // modern SaaS feel. font-display is the heavy headline weight.
+        sans: ['Geist', 'Inter', 'system-ui', 'sans-serif'],
+        display: ['Geist', 'Inter', 'system-ui', 'sans-serif'],
+        mono: ['"Geist Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        // Landing page keeps its Space Grotesk + Playfair pair via direct
+        // class usage / inline CSS variables; not exposed as a Tailwind name.
         serif: ['"Playfair Display"', 'Georgia', 'serif'],
+      },
+      letterSpacing: {
+        'display': '-0.02em',     // tight tracking on big headlines
+        'display-tight': '-0.03em',
+        'eyebrow': '0.14em',      // wide tracking on uppercase labels
       },
       backgroundImage: {
         'glass-gradient':

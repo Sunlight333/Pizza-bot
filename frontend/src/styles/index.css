@@ -14,10 +14,63 @@
       radial-gradient(ellipse at bottom, rgba(255, 215, 0, 0.05), transparent 50%),
       #0F0F23;
     min-height: 100vh;
+    /* Modern SaaS body baseline — Geist with the OpenType features that
+       give it its distinctive look. cv11 = single-storey "a"; ss01 reshapes
+       I/l for clearer disambiguation. */
+    font-feature-settings: "ss01", "cv11";
+    letter-spacing: -0.005em;
   }
 
+  /* Headlines — Geist heavy with negative tracking. Same family as body so
+     the page reads as one type system, only weight + size change. */
   h1, h2, h3, h4 {
     @apply font-display;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+  h1 { font-weight: 700; letter-spacing: -0.025em; }
+  h2 { font-weight: 700; }
+
+  /* Tabular numerals everywhere a digit appears in a stat / table cell —
+     keeps numbers in vertical alignment, the SaaS-dashboard look. */
+  .tabular,
+  table,
+  th,
+  td {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  /* Eyebrow: small uppercase tracked label that sits above section
+     headings and stat blocks. Matches the reference site's "PRODUCT IN
+     HAND" / "EXPRESSIVE AVATARS" caps. */
+  .eyebrow {
+    font-family: 'Geist', 'Inter', system-ui, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: rgba(255, 255, 255, 0.55);
+  }
+  .eyebrow-primary { color: #FF6B35; }
+
+  /* Stat number — large, bold, tabular figures (Geist Mono optional). */
+  .stat-number {
+    font-family: 'Geist', 'Inter', system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  /* Display heading utility for hero-style admin titles. */
+  .display-heading {
+    font-family: 'Geist', 'Inter', system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
   }
 }
 
@@ -36,12 +89,12 @@
   }
 
   .btn-primary {
-    @apply bg-primary-gradient text-white font-medium px-5 py-2.5 rounded-xl
+    @apply bg-primary-gradient text-white font-semibold tracking-tight px-5 py-2.5 rounded-xl
            shadow-glow-primary transition-transform hover:scale-[1.02] active:scale-[0.98];
   }
 
   .btn-ghost {
-    @apply border border-glass-border text-white/80 px-4 py-2 rounded-xl
+    @apply border border-glass-border text-white/80 font-medium px-4 py-2 rounded-xl
            hover:bg-white/5 hover:text-white transition-colors;
   }
 
@@ -49,6 +102,7 @@
     @apply w-full bg-white/5 border border-glass-border rounded-xl px-4 py-3
            text-white placeholder-white/40 outline-none
            focus:border-primary/60 focus:ring-2 focus:ring-primary/20 transition;
+    font-feature-settings: "ss01", "cv11";
   }
 
   .skeleton {
