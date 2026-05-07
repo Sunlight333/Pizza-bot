@@ -1,24 +1,25 @@
 <!doctype html>
 <html lang="pt-BR" class="dark" data-theme="light">
-  <!-- Theme init: read the persisted choice synchronously before React paints
-       so we don't get a "wrong theme" flash. The store uses the same
-       localStorage key (pizzabot-theme) and Zustand persist envelope. -->
-  <script>
-    (function () {
-      try {
-        var raw = localStorage.getItem('pizzabot-theme');
-        if (raw) {
-          var parsed = JSON.parse(raw);
-          var t = parsed && parsed.state && parsed.state.theme;
-          if (t === 'dark' || t === 'light') {
-            document.documentElement.dataset.theme = t;
-          }
-        }
-      } catch (e) { /* keep default */ }
-    })();
-  </script>
   <head>
     <meta charset="UTF-8" />
+    <!-- Theme init: read the persisted choice synchronously before any
+         CSS paints so we don't flash the wrong theme. Mirrors the
+         localStorage envelope produced by Zustand persist (key
+         "pizzabot-theme"). Must run early in <head>. -->
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('pizzabot-theme');
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            var t = parsed && parsed.state && parsed.state.theme;
+            if (t === 'dark' || t === 'light') {
+              document.documentElement.dataset.theme = t;
+            }
+          }
+        } catch (e) { /* keep default */ }
+      })();
+    </script>
     <link rel="icon" type="image/png" href="/images/landing/favicon.png" />
     <link rel="apple-touch-icon" href="/images/landing/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
