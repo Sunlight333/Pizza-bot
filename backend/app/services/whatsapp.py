@@ -65,52 +65,57 @@ class EvolutionClient:
                 raise
         raise last_exc  # pragma: no cover
 
-    async def send_text(self, phone: str, text: str) -> dict:
+    async def _compose_pause(self, phone: str, presence: str = "composing") -> None:
         """
-        Send a text message with a ~2-second human-like pause:
-          1. mark presence as "composing" (typing indicator) for COMPOSE_DELAY_MS
-          2. wait the same window in Python so the indicator stays visible
-             until the message actually lands
-          3. send the message
+        Show a ~2-second presence indicator before any outbound customer
+        message and wait the same window in Python.
 
-        The wait also doubles as a settle window for WhatsApp's E2EE pre-key
-        handshake — Baileys-based clients sometimes ship messages before the
-        recipient's pre-key bundle is fetched, leaving the recipient stuck
-        on "Waiting for this message".
+        Hard requirement, applied to every customer-facing send: the bot must
+        not feel instant. WhatsApp's anti-spam heuristics also flag
+        sub-second replies, which can cause messages to be silently
+        undelivered. The wait also doubles as a settle window for WhatsApp's
+        E2EE pre-key handshake — Baileys-based clients sometimes ship
+        messages before the recipient's pre-key bundle is fetched, leaving
+        the recipient stuck on "Waiting for this message".
+
+        `presence` is "composing" for text and "recording" for voice notes;
+        for images/video/documents we still send "composing" since WhatsApp
+        has no dedicated "uploading" state and the typing dots are the
+        closest natural cue.
         """
-        compose_seconds = self.COMPOSE_DELAY_MS / 1000
-
-        # 1. presence (best-effort; never block the send if presence fails)
+        # Presence is best-effort; never block the send if it fails.
         try:
             await self._request(
                 "POST",
                 f"/chat/sendPresence/{self._instance}",
                 json={
                     "number": phone,
-                    "presence": "composing",
+                    "presence": presence,
                     "delay": self.COMPOSE_DELAY_MS,
                 },
             )
         except Exception as e:
-            log.debug("presence composing failed (non-fatal): %s", e)
+            log.debug("presence %s failed (non-fatal): %s", presence, e)
 
-        # 2. wait the full compose window before issuing the send
-        await asyncio.sleep(compose_seconds)
+        await asyncio.sleep(self.COMPOSE_DELAY_MS / 1000)
 
-        # 3. send the actual text — server-side `delay` is now 0 because the
-        # client-side wait already covered the typing pause.
+    async def send_text(self, phone: str, text: str) -> dict:
+        """Send a text message with the standard 2s compose pause."""
+        await self._compose_pause(phone, presence="composing")
         return await self._request(
             "POST", f"/message/sendText/{self._instance}",
             json={"number": phone, "text": text},
         )
 
     async def send_audio(self, phone: str, audio_base64: str) -> dict:
+        await self._compose_pause(phone, presence="recording")
         return await self._request(
             "POST", f"/message/sendWhatsAppAudio/{self._instance}",
             json={"number": phone, "audio": audio_base64},
         )
 
     async def send_buttons(self, phone: str, text: str, buttons: list[dict]) -> dict:
+        await self._compose_pause(phone, presence="composing")
         return await self._request(
             "POST", f"/message/sendButtons/{self._instance}",
             json={"number": phone, "text": text, "buttons": buttons},
@@ -125,6 +130,7 @@ class EvolutionClient:
         sections: list[dict],
         footer_text: Optional[str] = None,
     ) -> dict:
+        await self._compose_pause(phone, presence="composing")
         payload: dict[str, Any] = {
             "number": phone,
             "title": title,
@@ -146,7 +152,8 @@ class EvolutionClient:
         caption: Optional[str] = None,
         file_name: Optional[str] = None,
     ) -> dict:
-        """Send image/video/document. media_type: image|video|document."""
+        """Send image/video/document with the standard 2s compose pause."""
+        await self._compose_pause(phone, presence="composing")
         payload: dict[str, Any] = {
             "number": phone,
             "mediatype": media_type,
