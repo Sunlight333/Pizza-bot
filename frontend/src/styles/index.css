@@ -407,3 +407,102 @@
 /* Public landing / login (.landing-root) keep their warm palette. Restate
    the body color override there so it isn't shadowed by the rules above. */
 [data-theme="light"] .landing-root { color: var(--charcoal); }
+
+/* =========================================================================
+   Per-route background images for the admin shell
+   -------------------------------------------------------------------------
+   The shell paints a fixed full-screen image behind everything (.app-shell-bg)
+   plus a tinted overlay (.app-shell-overlay) to keep contrast. Each route
+   sets --shell-bg-image so navigating between sections changes the backdrop.
+   Cards, sidebar, and topbar are made translucent below so the image bleeds
+   through subtly without harming readability.
+   ========================================================================= */
+.app-shell {
+  position: relative;
+  isolation: isolate;
+  --shell-bg-image: url('/images/backgrounds/dashboard-hero.png');
+  --shell-bg-position: center;
+  --shell-bg-size: cover;
+}
+.app-shell.route-dashboard      { --shell-bg-image: url('/images/backgrounds/dashboard-hero.png'); }
+.app-shell.route-orders         { --shell-bg-image: url('/images/backgrounds/login-bg.png'); }
+.app-shell.route-menu           { --shell-bg-image: url('/images/backgrounds/login-pizza-poster.png'); }
+.app-shell.route-customers      { --shell-bg-image: url('/images/backgrounds/dashboard-hero.png'); }
+.app-shell.route-delivery       { --shell-bg-image: url('/images/backgrounds/dashboard-hero.png'); }
+.app-shell.route-conversations  {
+  --shell-bg-image: url('/images/backgrounds/auth-pattern.png');
+  --shell-bg-size: 320px 320px;
+  --shell-bg-position: top left;
+}
+.app-shell.route-settings       {
+  --shell-bg-image: url('/images/backgrounds/auth-pattern.png');
+  --shell-bg-size: 320px 320px;
+  --shell-bg-position: top left;
+}
+
+.app-shell-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image: var(--shell-bg-image);
+  background-size: var(--shell-bg-size);
+  background-position: var(--shell-bg-position);
+  background-repeat: var(--shell-bg-repeat, no-repeat);
+  pointer-events: none;
+  transition: opacity 320ms ease;
+}
+.app-shell.route-conversations .app-shell-bg,
+.app-shell.route-settings .app-shell-bg {
+  --shell-bg-repeat: repeat;
+}
+
+/* Tinted scrim so cards keep contrast over the photo. Uses theme tokens so
+   light mode brightens, dark mode deepens. */
+.app-shell-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--shell-overlay);
+  transition: background 250ms ease;
+}
+
+[data-theme="light"] {
+  --shell-overlay: linear-gradient(180deg, rgba(247, 248, 251, 0.78) 0%, rgba(247, 248, 251, 0.88) 100%);
+  --card-bg: rgba(255, 255, 255, 0.72);
+  --card-border: rgba(255, 255, 255, 0.55);
+  --card-blur: blur(18px) saturate(1.05);
+  --card-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 12px 28px -14px rgba(15, 23, 42, 0.18);
+}
+
+[data-theme="dark"] {
+  --shell-overlay: linear-gradient(180deg, rgba(15, 15, 35, 0.62) 0%, rgba(15, 15, 35, 0.78) 100%);
+  /* Card translucency in dark mode is already handled by --card-bg gradient
+     above; keep it but lower the alpha slightly so the photo reads through. */
+  --card-bg: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%);
+  --card-border: rgba(255, 255, 255, 0.10);
+  --card-blur: blur(20px) saturate(1.1);
+}
+
+/* Sidebar + TopBar are .glass-card / explicit translucent surfaces, so they
+   pick up the variables above. The TopBar uses Tailwind's bg-bg-card/95
+   which doesn't decompose CSS-var colors — override it explicitly so the
+   photo reads through the header too. */
+.topbar-shell {
+  background: var(--card-bg) !important;
+  backdrop-filter: var(--card-blur);
+  -webkit-backdrop-filter: var(--card-blur);
+  border-color: var(--card-border) !important;
+}
+
+/* Inputs over translucent surfaces need a touch more body so they don't
+   disappear into the card. */
+[data-theme="light"] .app-shell .input-field,
+[data-theme="light"] .app-shell input,
+[data-theme="light"] .app-shell textarea,
+[data-theme="light"] .app-shell select {
+  background-color: rgba(255, 255, 255, 0.85);
+}

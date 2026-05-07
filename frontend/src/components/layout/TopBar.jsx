@@ -32,7 +32,7 @@ export default function TopBar() {
   }
 
   return (
-    <header className="mx-3 mt-3 px-5 py-3 flex items-center gap-4 rounded-2xl border border-glass-border bg-bg-card/95 backdrop-blur-xl shadow-lg shadow-black/20 relative z-20">
+    <header className="topbar-shell mx-3 mt-3 px-5 py-3 flex items-center gap-4 rounded-2xl border border-glass-border bg-bg-card/95 backdrop-blur-xl shadow-lg shadow-black/20 relative z-20">
       <h1 className="font-display text-xl">{title}</h1>
 
       <GlobalSearch />
