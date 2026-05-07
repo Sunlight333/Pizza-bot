@@ -39,10 +39,14 @@ import '@/styles/landing.css'
 const BRAND = {
   name: 'Forno do Bairro',
   tagline: 'Forno a lenha · Pedido pelo WhatsApp',
-  // Replace with your real WhatsApp number including country code.
-  whatsappNumber: '5511999999999',
+  // WhatsApp — for wa.me/<digits> chat links. Two separate numbers because
+  // the pizzaria has a chat-only mobile (WhatsApp) and a separate landline
+  // for voice calls; they're not the same line.
+  whatsappNumber: '5517991289777',     // intl format, digits only — for wa.me
+  whatsappDisplay: '(17) 99128-9777',  // formatted for humans
   whatsappText: 'Olá! Quero fazer um pedido 🍕',
-  phone: '(11) 99999-9999',
+  phone: '(17) 3237-1112',             // landline, display
+  phoneDigits: '551732371112',         // landline, intl format for tel:
   address: 'Rua das Pizzas, 123 — Vila Madalena, São Paulo',
   hoursShort: 'Ter–Dom · 18h às 23h',
   hours: [
@@ -64,10 +68,11 @@ const fadeUp = {
 // =========================================================================
 // Live WhatsApp wiring
 // -------------------------------------------------------------------------
-// Polls the backend for the currently-paired WhatsApp number (the one the
-// bot is connected to via Evolution API). Every CTA on the page routes to
-// that live number. If the bot isn't paired (status != "open") the buttons
-// open a friendly modal instead of sending the customer to a dead chat.
+// Every CTA routes to BRAND.whatsappNumber — the single, customer-facing
+// WhatsApp the pizzaria advertises (matches what's printed on the menu).
+// We still poll the backend for Evolution's pairing state so the UI can
+// show a friendly "bot is configuring" modal when the bot won't reply for
+// a while; that flag drives the modal only, never the routed number.
 // =========================================================================
 async function fetchWhatsappStatus() {
   const url = `${getApiBase()}/api/evolution/public/whatsapp`
@@ -95,10 +100,10 @@ function WhatsAppProvider({ children }) {
   const [offlineOpen, setOfflineOpen] = useState(false)
 
   const connected = !!data?.connected
-  const phone = data?.phone || null
-  const url = connected
-    ? `https://wa.me/${phone}?text=${encodeURIComponent(BRAND.whatsappText)}`
-    : null
+  // Always advertise the canonical number — never whatever happens to be
+  // paired in Evolution (could be a staging line, a previous SIM, etc.).
+  const phone = BRAND.whatsappNumber
+  const url = `https://wa.me/${phone}?text=${encodeURIComponent(BRAND.whatsappText)}`
 
   const value = useMemo(
     () => ({
@@ -246,7 +251,7 @@ function WhatsAppOfflineModal({ open, onClose }) {
 
             <div className="mt-7 flex flex-col sm:flex-row gap-3">
               <a
-                href={`tel:+${BRAND.whatsappNumber}`}
+                href={`tel:+${BRAND.phoneDigits}`}
                 className="btn-ember flex-1 text-center justify-center"
                 onClick={onClose}
               >
@@ -1191,7 +1196,7 @@ function FinalCTA() {
               <ArrowRight size={18} className="opacity-80" />
             </WhatsAppLink>
             <a
-              href={`tel:+${BRAND.whatsappNumber}`}
+              href={`tel:+${BRAND.phoneDigits}`}
               className="inline-flex items-center justify-center gap-2 px-5 py-4 rounded-2xl border text-base font-semibold transition-colors"
               style={{
                 color: 'var(--cream)',
@@ -1293,7 +1298,7 @@ function Footer() {
           </p>
           <p className="text-sm mt-2" style={{ color: 'var(--charcoal-soft)' }}>
             <WhatsAppLink className="hover:underline">
-              WhatsApp: {BRAND.phone}
+              WhatsApp: {BRAND.whatsappDisplay}
             </WhatsAppLink>
           </p>
         </div>
@@ -1360,9 +1365,14 @@ export default function Landing() {
     }
   }, [])
 
+  // The provider must live INSIDE `.landing-root` because the offline modal
+  // it renders relies on the warm-palette CSS variables (--charcoal,
+  // --charcoal-soft, --ovenred) that are scoped to .landing-root. Wrapping
+  // it from the outside leaves the modal in the body's `text-white` scope
+  // and the text becomes white-on-cream (invisible).
   return (
-    <WhatsAppProvider>
-      <div className="landing-root min-h-screen">
+    <div className="landing-root min-h-screen">
+      <WhatsAppProvider>
         <Nav />
         <main>
           <Hero />
@@ -1377,7 +1387,7 @@ export default function Landing() {
         </main>
         <Footer />
         <FloatingWhatsApp />
-      </div>
-    </WhatsAppProvider>
+      </WhatsAppProvider>
+    </div>
   )
 }
