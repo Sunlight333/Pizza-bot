@@ -86,12 +86,22 @@ async def _process(event: dict) -> None:
     if event_type and "message" not in event_type.lower():
         return
 
-    if (data.get("key") or {}).get("fromMe"):
+    key = data.get("key") or {}
+    if key.get("fromMe"):
         return
 
     phone = _extract_phone(data)
     if not phone:
         return
+
+    # Mark the inbound message as read before any processing — gives the
+    # customer the blue checkmarks immediately, which a real attendant would
+    # do as soon as they pick up the chat. Strong anti-bot signal: bots that
+    # never deliver read receipts are trivial for WhatsApp to fingerprint.
+    remote_jid = key.get("remoteJid")
+    msg_id = key.get("id")
+    if remote_jid and msg_id:
+        await wa_client.mark_as_read(remote_jid, msg_id)
 
     text = _extract_text(data)
     audio_id = _extract_audio_id(data)

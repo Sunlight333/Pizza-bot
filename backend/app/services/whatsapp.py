@@ -4,6 +4,7 @@ Evolution API v2 client — text/list/buttons/media + retry with exponential bac
 import asyncio
 import base64
 import logging
+import random
 from typing import Any, Optional
 
 import httpx
@@ -17,9 +18,22 @@ class EvolutionClient:
     MAX_RETRIES = 3
     INITIAL_BACKOFF = 0.5  # seconds — doubles each retry
 
-    # Humanisation: show "typing..." for ~2 seconds before each text reply lands.
-    # The bot must not feel instant. This is a hard requirement, not a tunable.
-    COMPOSE_DELAY_MS = 2000
+    # Humanisation parameters — the bot must not feel instant. WhatsApp's
+    # anti-spam heuristics fingerprint bots by:
+    #   1. sub-second replies
+    #   2. perfectly identical reply latency (always 2.000s)
+    #   3. typing time independent of message length
+    # We address all three: every send shows a presence indicator, then waits
+    # a randomised, content-aware pause before the message lands.
+    COMPOSE_FLOOR_MS = 1500   # never feel instant — even an "ok"
+    COMPOSE_CEILING_MS = 6000  # never bore the customer past ~6s
+    COMPOSE_PER_CHAR_MS = 30   # ~33 chars/sec = realistic auto-suggest typing
+    # Media (no text length): represents "thinking + tap-to-upload" time.
+    MEDIA_DELAY_MIN_MS = 2200
+    MEDIA_DELAY_MAX_MS = 3800
+    # Audio (voice notes): "tap to record + speak briefly + send".
+    AUDIO_DELAY_MIN_MS = 1800
+    AUDIO_DELAY_MAX_MS = 3000
 
     def __init__(self) -> None:
         self._base = settings.evolution_api_url.rstrip("/")
@@ -65,23 +79,37 @@ class EvolutionClient:
                 raise
         raise last_exc  # pragma: no cover
 
-    async def _compose_pause(self, phone: str, presence: str = "composing") -> None:
+    def _text_delay_ms(self, text: str) -> int:
+        """Compute a length-scaled, jittered compose delay for text."""
+        chars = len(text or "")
+        # Linear growth from FLOOR upward, capped at CEILING.
+        scaled = self.COMPOSE_FLOOR_MS + chars * self.COMPOSE_PER_CHAR_MS
+        scaled = min(scaled, self.COMPOSE_CEILING_MS)
+        # ±15% jitter so two replies of the same length don't land at the
+        # same latency — a deterministic latency is the easiest fingerprint.
+        jittered = scaled * random.uniform(0.85, 1.15)
+        return int(max(self.COMPOSE_FLOOR_MS, min(self.COMPOSE_CEILING_MS, jittered)))
+
+    def _media_delay_ms(self) -> int:
+        return int(random.uniform(self.MEDIA_DELAY_MIN_MS, self.MEDIA_DELAY_MAX_MS))
+
+    def _audio_delay_ms(self) -> int:
+        return int(random.uniform(self.AUDIO_DELAY_MIN_MS, self.AUDIO_DELAY_MAX_MS))
+
+    async def _compose_pause(self, phone: str, presence: str, delay_ms: int) -> None:
         """
-        Show a ~2-second presence indicator before any outbound customer
-        message and wait the same window in Python.
+        Show a presence indicator and wait `delay_ms` before letting the
+        caller actually send.
 
-        Hard requirement, applied to every customer-facing send: the bot must
-        not feel instant. WhatsApp's anti-spam heuristics also flag
-        sub-second replies, which can cause messages to be silently
-        undelivered. The wait also doubles as a settle window for WhatsApp's
-        E2EE pre-key handshake — Baileys-based clients sometimes ship
-        messages before the recipient's pre-key bundle is fetched, leaving
-        the recipient stuck on "Waiting for this message".
+        Applied to every customer-facing send. The wait also doubles as a
+        settle window for WhatsApp's E2EE pre-key handshake — Baileys-based
+        clients sometimes ship messages before the recipient's pre-key
+        bundle is fetched, leaving the recipient stuck on "Waiting for this
+        message".
 
-        `presence` is "composing" for text and "recording" for voice notes;
-        for images/video/documents we still send "composing" since WhatsApp
-        has no dedicated "uploading" state and the typing dots are the
-        closest natural cue.
+        `presence` is "composing" for text/buttons/lists/media (typing dots),
+        "recording" for voice notes (mic-icon indicator). WhatsApp has no
+        dedicated "uploading" state, so images/documents reuse "composing".
         """
         # Presence is best-effort; never block the send if it fails.
         try:
@@ -91,31 +119,60 @@ class EvolutionClient:
                 json={
                     "number": phone,
                     "presence": presence,
-                    "delay": self.COMPOSE_DELAY_MS,
+                    "delay": delay_ms,
                 },
             )
         except Exception as e:
             log.debug("presence %s failed (non-fatal): %s", presence, e)
 
-        await asyncio.sleep(self.COMPOSE_DELAY_MS / 1000)
+        await asyncio.sleep(delay_ms / 1000)
+
+    async def mark_as_read(self, remote_jid: str, message_id: str) -> None:
+        """
+        Mark an inbound customer message as read (the blue checkmarks).
+        Best-effort — failures are logged and swallowed; not delivering a
+        read receipt would only mean the customer doesn't see the blue ticks
+        before the bot's reply, which is suboptimal UX but not catastrophic.
+
+        Strong anti-bot signal: real humans read before they reply. Bots
+        that skip read receipts are easier for WhatsApp to fingerprint.
+        """
+        try:
+            await self._request(
+                "POST",
+                f"/chat/markMessageAsRead/{self._instance}",
+                json={
+                    "readMessages": [
+                        {"remoteJid": remote_jid, "fromMe": False, "id": message_id}
+                    ]
+                },
+            )
+        except Exception as e:
+            log.debug("markMessageAsRead failed (non-fatal): %s", e)
 
     async def send_text(self, phone: str, text: str) -> dict:
-        """Send a text message with the standard 2s compose pause."""
-        await self._compose_pause(phone, presence="composing")
+        """Send a text message with a length-scaled humanised pause."""
+        await self._compose_pause(
+            phone, presence="composing", delay_ms=self._text_delay_ms(text),
+        )
         return await self._request(
             "POST", f"/message/sendText/{self._instance}",
             json={"number": phone, "text": text},
         )
 
     async def send_audio(self, phone: str, audio_base64: str) -> dict:
-        await self._compose_pause(phone, presence="recording")
+        await self._compose_pause(
+            phone, presence="recording", delay_ms=self._audio_delay_ms(),
+        )
         return await self._request(
             "POST", f"/message/sendWhatsAppAudio/{self._instance}",
             json={"number": phone, "audio": audio_base64},
         )
 
     async def send_buttons(self, phone: str, text: str, buttons: list[dict]) -> dict:
-        await self._compose_pause(phone, presence="composing")
+        await self._compose_pause(
+            phone, presence="composing", delay_ms=self._text_delay_ms(text),
+        )
         return await self._request(
             "POST", f"/message/sendButtons/{self._instance}",
             json={"number": phone, "text": text, "buttons": buttons},
@@ -130,7 +187,11 @@ class EvolutionClient:
         sections: list[dict],
         footer_text: Optional[str] = None,
     ) -> dict:
-        await self._compose_pause(phone, presence="composing")
+        await self._compose_pause(
+            phone,
+            presence="composing",
+            delay_ms=self._text_delay_ms(f"{title} {description}"),
+        )
         payload: dict[str, Any] = {
             "number": phone,
             "title": title,
@@ -152,8 +213,10 @@ class EvolutionClient:
         caption: Optional[str] = None,
         file_name: Optional[str] = None,
     ) -> dict:
-        """Send image/video/document with the standard 2s compose pause."""
-        await self._compose_pause(phone, presence="composing")
+        """Send image/video/document with a humanised compose pause."""
+        await self._compose_pause(
+            phone, presence="composing", delay_ms=self._media_delay_ms(),
+        )
         payload: dict[str, Any] = {
             "number": phone,
             "mediatype": media_type,
