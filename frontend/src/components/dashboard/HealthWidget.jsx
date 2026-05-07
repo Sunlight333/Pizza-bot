@@ -15,25 +15,31 @@ const LABELS = {
 
 // Vector summary icon — readable in both light & dark themes (the previous
 // PNG assets were drawn for a dark backdrop and rendered as black blobs on
-// the cream/white surface).
+// the cream/white surface). Sized so the glyph clearly fills the badge.
+const TILE_STYLE = {
+  width: '2.25rem',
+  height: '2.25rem',
+  borderRadius: '0.75rem',
+}
+
 function SummaryIcon({ summary }) {
   if (summary === 'ok') {
     return (
-      <div className="icon-tile icon-tile-emerald" style={{ width: '1.75rem', height: '1.75rem', borderRadius: '0.6rem' }}>
-        <Activity size={14} />
+      <div className="icon-tile icon-tile-emerald" style={TILE_STYLE}>
+        <Activity size={20} strokeWidth={2.4} />
       </div>
     )
   }
   if (summary === 'degraded') {
     return (
-      <div className="icon-tile icon-tile-orange" style={{ width: '1.75rem', height: '1.75rem', borderRadius: '0.6rem' }}>
-        <AlertTriangle size={14} />
+      <div className="icon-tile icon-tile-orange" style={TILE_STYLE}>
+        <AlertTriangle size={20} strokeWidth={2.4} />
       </div>
     )
   }
   return (
-    <div className="icon-tile icon-tile-rose" style={{ width: '1.75rem', height: '1.75rem', borderRadius: '0.6rem' }}>
-      <ShieldOff size={14} />
+    <div className="icon-tile icon-tile-rose" style={TILE_STYLE}>
+      <ShieldOff size={20} strokeWidth={2.4} />
     </div>
   )
 }
