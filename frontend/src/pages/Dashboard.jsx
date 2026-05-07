@@ -20,6 +20,7 @@ import LiveOrderFeed from '@/components/dashboard/LiveOrderFeed'
 import PeakHoursHeatmap from '@/components/dashboard/PeakHoursHeatmap'
 import { ordersApi } from '@/services/orders'
 import { useLiveOrders } from '@/hooks/useLiveOrders'
+import { useChartPalette } from '@/hooks/useChartPalette'
 import { ASSETS } from '@/utils/assets'
 
 const brl = (n) =>
@@ -77,6 +78,8 @@ export default function Dashboard() {
     label: new Date(d.date).toLocaleDateString('pt-BR', { weekday: 'short' }),
     revenue: Number(d.revenue || 0),
   }))
+
+  const chartPalette = useChartPalette()
 
   return (
     <AnimatedPage className="space-y-4 relative">
@@ -143,24 +146,27 @@ export default function Dashboard() {
                 <AreaChart data={revenueData}>
                   <defs>
                     <linearGradient id="grad-rev" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#FFD700" stopOpacity={0.6} />
-                      <stop offset="100%" stopColor="#FFD700" stopOpacity={0} />
+                      <stop offset="0%" stopColor={chartPalette.stroke} stopOpacity={0.6} />
+                      <stop offset="100%" stopColor={chartPalette.stroke} stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis dataKey="label" stroke="rgba(255,255,255,0.4)" fontSize={11} />
-                  <YAxis stroke="rgba(255,255,255,0.4)" fontSize={11} tickFormatter={(v) => `R$${v.toFixed(0)}`} />
+                  <CartesianGrid stroke={chartPalette.grid} vertical={false} />
+                  <XAxis dataKey="label" stroke={chartPalette.axis} fontSize={11} />
+                  <YAxis stroke={chartPalette.axis} fontSize={11} tickFormatter={(v) => `R$${v.toFixed(0)}`} />
                   <Tooltip
                     contentStyle={{
-                      background: 'rgba(26,26,62,0.85)',
-                      border: '1px solid rgba(255,255,255,0.12)',
+                      background: chartPalette.tooltipBg,
+                      border: `1px solid ${chartPalette.tooltipBorder}`,
                       borderRadius: 12,
                       backdropFilter: 'blur(12px)',
                       fontSize: 12,
+                      color: chartPalette.tooltipFg,
                     }}
+                    labelStyle={{ color: chartPalette.tooltipFg }}
+                    itemStyle={{ color: chartPalette.tooltipFg }}
                     formatter={(v) => brl(v)}
                   />
-                  <Area type="monotone" dataKey="revenue" stroke="#FFD700" fill="url(#grad-rev)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="revenue" stroke={chartPalette.stroke} fill="url(#grad-rev)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             )}

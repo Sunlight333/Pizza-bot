@@ -74,16 +74,18 @@ export default function HealthWidget() {
     : 'down'
 
   return (
-    <div className="glass-card p-4">
+    <div className="glass-card overflow-hidden">
       <button
+        type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between text-left"
+        aria-expanded={open}
+        className="w-full flex items-center justify-between text-left p-4 cursor-pointer transition-colors hover:bg-white/5 active:bg-white/10"
       >
-        <div className="flex items-center gap-2.5 text-sm">
+        <div className="flex items-center gap-2.5 text-sm pointer-events-none">
           <SummaryIcon summary={summary} />
           <span className="text-white/70 font-medium">Saúde do sistema</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 pointer-events-none">
           <div className="flex items-center gap-1.5">
             {components.map((c) => (
               <Dot key={c} ok={!!data?.[c]?.ok} />
@@ -105,7 +107,7 @@ export default function HealthWidget() {
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="pt-3 space-y-1.5 border-t border-glass-border mt-3">
+            <div className="px-4 pb-4 pt-3 space-y-1.5 border-t border-glass-border">
               {components.map((c) => (
                 <div key={c} className="flex items-center justify-between text-xs py-1">
                   <div className="flex items-center gap-2">

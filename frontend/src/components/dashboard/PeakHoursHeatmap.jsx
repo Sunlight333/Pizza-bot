@@ -1,9 +1,13 @@
 import { useMemo } from 'react'
 import { motion } from 'framer-motion'
 
+import { useChartPalette } from '@/hooks/useChartPalette'
+
 const DOW = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
 export default function PeakHoursHeatmap({ data = [] }) {
+  const palette = useChartPalette()
+
   const grid = useMemo(() => {
     const g = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0))
     data.forEach((d) => {
@@ -17,9 +21,9 @@ export default function PeakHoursHeatmap({ data = [] }) {
   const max = Math.max(1, ...grid.flat())
 
   const cellColor = (n) => {
-    if (n === 0) return 'rgba(255,255,255,0.04)'
+    if (n === 0) return palette.heatmapEmpty
     const t = n / max
-    return `rgba(255, 107, 53, ${0.18 + t * 0.72})`
+    return `rgba(${palette.heatmapFillRgb}, ${0.18 + t * 0.72})`
   }
 
   return (
@@ -61,7 +65,7 @@ export default function PeakHoursHeatmap({ data = [] }) {
           <span
             key={t}
             className="w-3 h-3 rounded-sm"
-            style={{ backgroundColor: `rgba(255, 107, 53, ${t})` }}
+            style={{ backgroundColor: `rgba(${palette.heatmapFillRgb}, ${t})` }}
           />
         ))}
         <span>mais</span>
