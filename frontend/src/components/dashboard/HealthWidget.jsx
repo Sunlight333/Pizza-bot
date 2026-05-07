@@ -75,17 +75,27 @@ export default function HealthWidget() {
 
   return (
     <div className="glass-card overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
+      {/* Header row — entire surface is the toggle. role="button" + tabIndex
+          + onKeyDown make it keyboard-accessible without nesting the
+          button inside the card (which sometimes traps clicks at edges). */}
+      <div
+        role="button"
+        tabIndex={0}
         aria-expanded={open}
-        className="w-full flex items-center justify-between text-left p-4 cursor-pointer transition-colors hover:bg-white/5 active:bg-white/10"
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setOpen((o) => !o)
+          }
+        }}
+        className="flex items-center justify-between p-4 cursor-pointer select-none transition-colors hover:bg-white/5 active:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
       >
-        <div className="flex items-center gap-2.5 text-sm pointer-events-none">
+        <div className="flex items-center gap-2.5 text-sm">
           <SummaryIcon summary={summary} />
           <span className="text-white/70 font-medium">Saúde do sistema</span>
         </div>
-        <div className="flex items-center gap-3 pointer-events-none">
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             {components.map((c) => (
               <Dot key={c} ok={!!data?.[c]?.ok} />
@@ -96,7 +106,7 @@ export default function HealthWidget() {
             className={`text-white/40 transition-transform ${open ? 'rotate-180' : ''}`}
           />
         </div>
-      </button>
+      </div>
 
       <AnimatePresence initial={false}>
         {open && data && (

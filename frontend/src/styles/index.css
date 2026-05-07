@@ -332,9 +332,21 @@
 [data-theme="light"] .text-white\/20      { color: #94A3B8; }
 [data-theme="light"] .text-white\/10      { color: #CBD5E1; }
 
-[data-theme="light"] .bg-white\/5         { background-color: #F8FAFC; }
-[data-theme="light"] .bg-white\/10        { background-color: #F1F5F9; }
-[data-theme="light"] .bg-white\/20        { background-color: #E2E8F0; }
+/* Tinted backgrounds — bumped one step darker than slate-50 so the
+   hover/active feedback is *actually visible* on white cards. The
+   previous slate-50 was nearly indistinguishable from #FFFFFF. */
+[data-theme="light"] .bg-white\/5         { background-color: #F1F5F9; }
+[data-theme="light"] .bg-white\/10        { background-color: #E2E8F0; }
+[data-theme="light"] .bg-white\/20        { background-color: #CBD5E1; }
+
+/* Hover / active modifier variants — these are NOT covered by the rule
+   above because their selector is `.hover\:bg-white\/5:hover` (different
+   class), not `.bg-white\/5`. Re-skin them explicitly so interactive
+   surfaces have legible visual feedback in light mode. */
+[data-theme="light"] .hover\:bg-white\/5:hover    { background-color: #F1F5F9; }
+[data-theme="light"] .hover\:bg-white\/10:hover   { background-color: #E2E8F0; }
+[data-theme="light"] .active\:bg-white\/10:active { background-color: #CBD5E1; }
+[data-theme="light"] .active\:bg-white\/20:active { background-color: #94A3B8; }
 
 [data-theme="light"] .border-white\/5     { border-color: #F1F5F9; }
 [data-theme="light"] .border-white\/10    { border-color: #E5E9F0; }
