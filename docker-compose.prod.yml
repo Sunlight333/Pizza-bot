@@ -37,6 +37,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      # Operator-uploaded menu images and product photos live here. Persisted
+      # across rebuilds — without this volume, every `deploy.sh` wipes
+      # whatever was uploaded via /api/menu/products/upload-image and the
+      # URLs in bot_config.menu_images point at deleted files.
+      - media_data:/app/media
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
@@ -84,3 +90,4 @@ volumes:
   redis_data:
   evolution_instances:
   uptime_data:
+  media_data:
