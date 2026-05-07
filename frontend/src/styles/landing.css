@@ -371,3 +371,31 @@
   outline-offset: 3px;
   border-radius: 8px;
 }
+
+/* Login + auth inputs — warm paper-style fields that match the rest of the
+   landing aesthetic. Scoped under .landing-root so the dashboard's dark
+   .input-field stays untouched. */
+.landing-root .login-input {
+  width: 100%;
+  padding: 0.85rem 1rem 0.85rem 2.6rem;
+  border-radius: 12px;
+  background: var(--offwhite);
+  color: var(--charcoal);
+  border: 1px solid rgba(31, 24, 21, 0.14);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 200ms, box-shadow 200ms, background 200ms;
+}
+.landing-root .login-input::placeholder {
+  color: rgba(31, 24, 21, 0.42);
+}
+.landing-root .login-input:focus {
+  border-color: var(--ember);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.18);
+}
+.landing-root .login-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

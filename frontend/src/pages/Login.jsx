@@ -6,7 +6,7 @@ import { Lock, User as UserIcon } from 'lucide-react'
 
 import { api } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
-import { ASSETS } from '@/utils/assets'
+import '@/styles/landing.css'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -46,50 +46,78 @@ export default function Login() {
   }
 
   return (
-    <div className="relative h-screen flex items-center justify-center overflow-hidden">
-      {/* Layered backdrop: photo → tonal gradient → tiled pattern → R3F (or its poster fallback) */}
+    <div className="landing-root min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+      {/* Subtle ember halo behind the card — same warm vocabulary as the
+          landing hero. Decorative only, doesn't block clicks. */}
       <div
         aria-hidden="true"
-        className="absolute inset-0 -z-30 bg-cover bg-center"
-        style={{ backgroundImage: `url(${ASSETS.backgrounds.login})` }}
-      />
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 -z-20"
+        className="absolute pointer-events-none"
         style={{
+          inset: '-10% -10% auto auto',
+          width: '60vw',
+          height: '60vw',
+          maxWidth: 720,
+          maxHeight: 720,
           background:
-            'linear-gradient(135deg, rgba(15,15,35,0.85) 0%, rgba(15,15,35,0.7) 60%, rgba(255,107,53,0.15) 100%)',
+            'radial-gradient(closest-side, rgba(255,107,53,0.18), rgba(255,215,0,0.08) 45%, transparent 70%)',
+          filter: 'blur(20px)',
         }}
       />
       <div
         aria-hidden="true"
-        className="absolute inset-0 -z-20 opacity-15 mix-blend-overlay"
+        className="absolute pointer-events-none"
         style={{
-          backgroundImage: `url(${ASSETS.backgrounds.authPattern})`,
-          backgroundSize: '320px',
-          backgroundRepeat: 'repeat',
+          inset: 'auto auto -15% -10%',
+          width: '50vw',
+          height: '50vw',
+          maxWidth: 600,
+          maxHeight: 600,
+          background:
+            'radial-gradient(closest-side, rgba(139,26,26,0.14), transparent 65%)',
+          filter: 'blur(20px)',
         }}
       />
+
       <motion.form
         onSubmit={onSubmit}
-        initial={{ opacity: 0, y: 20, scale: 0.98 }}
+        initial={{ opacity: 0, y: 18, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="glass-card w-full max-w-sm p-8 mx-4 relative z-10 bg-bg-card/85 backdrop-blur-2xl"
+        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+        className="landing-card-3d w-full max-w-sm p-8 sm:p-10 relative z-10"
       >
-        <div className="text-center mb-8">
+        <div className="flex flex-col items-center text-center mb-7">
           <img
-            src={ASSETS.brand.logo}
-            alt="Pizzabot"
-            className="mx-auto w-16 h-16 rounded-2xl shadow-glow-primary mb-3 ring-1 ring-glass-border"
+            src="/images/landing/logo.png"
+            alt="Pizzas Planalto"
+            className="h-20 w-auto mb-5"
+            style={{
+              filter: 'drop-shadow(0 12px 22px rgba(139,26,26,0.18))',
+            }}
+            onError={(e) => {
+              // Fallback to the generic brand logo if the landing logo is
+              // missing on a fresh deploy.
+              e.currentTarget.src = '/images/brand/logo.png'
+            }}
           />
-          <h1 className="font-display text-2xl">Pizzabot</h1>
-          <p className="text-white/50 text-sm mt-1">Painel administrativo</p>
+          <span className="landing-eyebrow">Painel administrativo</span>
+          <h1 className="landing-display text-3xl sm:text-[34px] mt-3">
+            Bem-vindo de volta
+          </h1>
+          <p
+            className="text-sm mt-2"
+            style={{ color: 'var(--charcoal-soft)', opacity: 0.75 }}
+          >
+            Entre com sua conta para gerenciar pedidos.
+          </p>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="relative">
-            <UserIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+            <UserIcon
+              size={16}
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ color: 'var(--charcoal-soft)', opacity: 0.55 }}
+            />
             <input
               type="text"
               autoFocus
@@ -97,29 +125,42 @@ export default function Login() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Usuário"
-              className="input-field pl-10"
+              className="login-input"
+              disabled={loading}
             />
           </div>
 
           <div className="relative">
-            <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+            <Lock
+              size={16}
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ color: 'var(--charcoal-soft)', opacity: 0.55 }}
+            />
             <input
               type="password"
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Senha"
-              className="input-field pl-10"
+              className="login-input"
+              disabled={loading}
             />
           </div>
 
-          <button type="submit" disabled={loading} className="btn-primary w-full disabled:opacity-60">
-            {loading ? 'Entrando...' : 'Entrar'}
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn-ember w-full mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Entrando…' : 'Entrar'}
           </button>
         </div>
 
-        <p className="text-center text-white/30 text-xs mt-6">
-          Padrão: admin / admin123 (alterar após o primeiro login)
+        <p
+          className="text-center text-[11px] mt-7"
+          style={{ color: 'var(--charcoal-soft)', opacity: 0.55 }}
+        >
+          Padrão: admin / admin123 — altere após o primeiro acesso.
         </p>
       </motion.form>
     </div>
