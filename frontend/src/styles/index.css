@@ -8,17 +8,17 @@
   }
 
   body {
-    @apply bg-bg text-charcoal font-sans antialiased;
-    /* Cream page BG with very soft warm radials — matches the reference's
-       light SaaS surface. No more dark navy. */
+    @apply font-sans antialiased;
+    /* Cool slate-tinted page BG with two whisper-faint indigo / violet
+       radials — matches the reference SaaS dashboard's surface. */
     background:
-      radial-gradient(900px 500px at 8% -5%, rgba(37,99,235,0.05), transparent 55%),
-      radial-gradient(900px 500px at 100% 5%, rgba(245,158,11,0.05), transparent 60%),
-      #F4EFE5;
+      radial-gradient(900px 500px at 8% -5%, rgba(79,70,229,0.05), transparent 55%),
+      radial-gradient(900px 500px at 100% 5%, rgba(168,85,247,0.04), transparent 60%),
+      #F7F8FB;
     min-height: 100vh;
     font-feature-settings: "ss01", "cv11";
     letter-spacing: -0.005em;
-    color: #0E1626;
+    color: #0F172A;
   }
 
   h1, h2, h3, h4 {
@@ -26,7 +26,7 @@
     font-weight: 600;
     letter-spacing: -0.02em;
     line-height: 1.15;
-    color: #0E1626;
+    color: #0F172A;
   }
   h1 { font-weight: 700; letter-spacing: -0.025em; }
   h2 { font-weight: 700; }
@@ -69,75 +69,75 @@
 }
 
 @layer components {
-  /* Light-theme card: white surface, hairline border, soft elevation drop.
-     Replaces the previous frosted-glass-on-dark look. */
+  /* Pure-white SaaS card with a slate hairline and a soft elevation drop.
+     Same vocabulary as the reference dashboard's stat / chart cards. */
   .glass-card {
     @apply rounded-2xl;
-    background: linear-gradient(180deg, #FFFFFF 0%, #FBF6EE 100%);
-    border: 1px solid rgba(14, 22, 38, 0.08);
+    background: #FFFFFF;
+    border: 1px solid #E5E9F0;
     box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.04),
       0 1px 0 rgba(255, 255, 255, 0.7) inset,
-      0 1px 2px rgba(14, 22, 38, 0.04),
-      0 6px 18px -8px rgba(14, 22, 38, 0.10);
+      0 8px 20px -10px rgba(15, 23, 42, 0.08);
     transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
-    color: #0E1626;
+    color: #0F172A;
   }
 
   .glass-card-interactive {
     @apply glass-card;
   }
   .glass-card-interactive:hover {
-    border-color: rgba(37, 99, 235, 0.30);
+    border-color: #C7D2FE;
     box-shadow:
-      0 1px 0 rgba(255, 255, 255, 0.8) inset,
-      0 4px 8px rgba(14, 22, 38, 0.06),
-      0 18px 36px -16px rgba(14, 22, 38, 0.18);
+      0 4px 8px rgba(15, 23, 42, 0.06),
+      0 1px 0 rgba(255, 255, 255, 0.9) inset,
+      0 18px 32px -16px rgba(15, 23, 42, 0.14);
     transform: translateY(-1px);
   }
 
-  /* Solid bright-blue CTA, matches the reference's "Create Your First Avatar"
-     style. Rounded, clean, no glow halo. */
+  /* Indigo → Violet primary CTA — matches the reference's "Upgrade Now"
+     and chart-fill aesthetic. */
   .btn-primary {
     @apply text-white font-semibold tracking-tight px-5 py-2.5 rounded-xl
            transition-transform hover:scale-[1.01] active:scale-[0.98];
-    background: linear-gradient(180deg, #3B82F6 0%, #2563EB 100%);
+    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
     box-shadow:
       0 1px 0 rgba(255, 255, 255, 0.20) inset,
       0 -6px 12px -8px rgba(0, 0, 0, 0.20) inset,
-      0 8px 22px -6px rgba(37, 99, 235, 0.35);
+      0 10px 28px -10px rgba(79, 70, 229, 0.45);
   }
   .btn-primary:hover { filter: brightness(1.04); }
 
   .btn-ghost {
     @apply font-medium px-4 py-2 rounded-xl transition-colors;
-    color: #0E1626;
-    background: rgba(14, 22, 38, 0.04);
-    border: 1px solid rgba(14, 22, 38, 0.10);
+    color: #0F172A;
+    background: #F1F5F9;
+    border: 1px solid #E5E9F0;
   }
   .btn-ghost:hover {
-    background: rgba(14, 22, 38, 0.07);
-    border-color: rgba(14, 22, 38, 0.18);
+    background: #E2E8F0;
+    border-color: #CBD5E1;
   }
 
   .input-field {
     @apply w-full rounded-xl px-4 py-3 outline-none transition;
     background: #FFFFFF;
-    color: #0E1626;
-    border: 1px solid rgba(14, 22, 38, 0.12);
+    color: #0F172A;
+    border: 1px solid #E5E9F0;
     font-feature-settings: "ss01", "cv11";
   }
-  .input-field::placeholder { color: rgba(14, 22, 38, 0.42); }
+  .input-field::placeholder { color: #94A3B8; }
   .input-field:focus {
-    border-color: rgba(37, 99, 235, 0.60);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+    border-color: #818CF8;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18);
   }
 
   .skeleton {
     background: linear-gradient(
       90deg,
-      rgba(14, 22, 38, 0.04) 0%,
-      rgba(14, 22, 38, 0.08) 50%,
-      rgba(14, 22, 38, 0.04) 100%
+      rgba(15, 23, 42, 0.04) 0%,
+      rgba(15, 23, 42, 0.08) 50%,
+      rgba(15, 23, 42, 0.04) 100%
     );
     background-size: 1000px 100%;
     @apply animate-shimmer rounded-lg;
@@ -150,10 +150,24 @@
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    border: 1px solid rgba(37, 99, 235, 0.6);
+    border: 1px solid rgba(79, 70, 229, 0.6);
     opacity: 0;
     animation: status-pulse 2.2s ease-out infinite;
   }
+
+  /* Reusable colored "icon tile" — the small rounded-square colored
+     containers the reference uses next to stat numbers. */
+  .icon-tile {
+    @apply inline-flex items-center justify-center rounded-xl shrink-0;
+    width: 2.75rem;
+    height: 2.75rem;
+    color: #FFFFFF;
+  }
+  .icon-tile-indigo  { background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%); }
+  .icon-tile-violet  { background: linear-gradient(135deg, #A855F7 0%, #7C3AED 100%); }
+  .icon-tile-emerald { background: linear-gradient(135deg, #34D399 0%, #10B981 100%); }
+  .icon-tile-orange  { background: linear-gradient(135deg, #FB923C 0%, #F97316 100%); }
+  .icon-tile-rose    { background: linear-gradient(135deg, #FB7185 0%, #E11D48 100%); }
 }
 
 @keyframes status-pulse {
@@ -170,52 +184,45 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(14, 22, 38, 0.12);
+  background: rgba(15, 23, 42, 0.12);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(37, 99, 235, 0.40);
+  background: rgba(79, 70, 229, 0.40);
 }
 
 /* =========================================================================
    Light-theme override layer
    -------------------------------------------------------------------------
-   The admin's 30+ files use Tailwind utility classes (`text-white/40`,
-   `bg-white/5`, `border-white/10`, etc.) that were designed for a dark
-   surface. Re-mapping them under [data-theme="light"] re-skins the whole
-   admin without touching individual files. The .landing-root scope on the
-   public landing/login keeps its own warm palette (it sets its own colors
-   via CSS variables — these overrides don't affect it).
+   30+ files use Tailwind utility classes (`text-white/40`, `bg-white/5`,
+   `border-white/10`) that were designed for a dark surface. Re-mapping
+   them under [data-theme="light"] re-skins the whole admin without
+   touching individual files. Slate (#0F172A / Tailwind slate-900) is the
+   new dark color, matching the reference SaaS dashboard.
    ========================================================================= */
-[data-theme="light"] .text-white          { color: #0E1626; }
-[data-theme="light"] .text-white\/90      { color: rgba(14, 22, 38, 0.90); }
-[data-theme="light"] .text-white\/80      { color: rgba(14, 22, 38, 0.80); }
-[data-theme="light"] .text-white\/70      { color: rgba(14, 22, 38, 0.70); }
-[data-theme="light"] .text-white\/60      { color: rgba(14, 22, 38, 0.62); }
-[data-theme="light"] .text-white\/50      { color: rgba(14, 22, 38, 0.55); }
-[data-theme="light"] .text-white\/40      { color: rgba(14, 22, 38, 0.48); }
-[data-theme="light"] .text-white\/30      { color: rgba(14, 22, 38, 0.40); }
-[data-theme="light"] .text-white\/20      { color: rgba(14, 22, 38, 0.30); }
-[data-theme="light"] .text-white\/10      { color: rgba(14, 22, 38, 0.20); }
+[data-theme="light"] .text-white          { color: #0F172A; }
+[data-theme="light"] .text-white\/90      { color: rgba(15, 23, 42, 0.92); }
+[data-theme="light"] .text-white\/80      { color: rgba(15, 23, 42, 0.82); }
+[data-theme="light"] .text-white\/70      { color: rgba(15, 23, 42, 0.72); }
+[data-theme="light"] .text-white\/60      { color: rgba(15, 23, 42, 0.62); }
+[data-theme="light"] .text-white\/50      { color: #64748B; }
+[data-theme="light"] .text-white\/40      { color: #94A3B8; }
+[data-theme="light"] .text-white\/30      { color: #94A3B8; }
+[data-theme="light"] .text-white\/20      { color: #CBD5E1; }
+[data-theme="light"] .text-white\/10      { color: #E2E8F0; }
 
-[data-theme="light"] .bg-white\/5         { background-color: rgba(14, 22, 38, 0.04); }
-[data-theme="light"] .bg-white\/10        { background-color: rgba(14, 22, 38, 0.06); }
-[data-theme="light"] .bg-white\/20        { background-color: rgba(14, 22, 38, 0.08); }
+[data-theme="light"] .bg-white\/5         { background-color: #F8FAFC; }
+[data-theme="light"] .bg-white\/10        { background-color: #F1F5F9; }
+[data-theme="light"] .bg-white\/20        { background-color: #E2E8F0; }
 
-[data-theme="light"] .border-white\/5     { border-color: rgba(14, 22, 38, 0.06); }
-[data-theme="light"] .border-white\/10    { border-color: rgba(14, 22, 38, 0.08); }
-[data-theme="light"] .border-white\/20    { border-color: rgba(14, 22, 38, 0.12); }
+[data-theme="light"] .border-white\/5     { border-color: #F1F5F9; }
+[data-theme="light"] .border-white\/10    { border-color: #E5E9F0; }
+[data-theme="light"] .border-white\/20    { border-color: #CBD5E1; }
 
 [data-theme="light"] .placeholder-white\/40::placeholder,
 [data-theme="light"] .placeholder-white\/30::placeholder,
-[data-theme="light"] .placeholder-white\/50::placeholder { color: rgba(14, 22, 38, 0.42); }
+[data-theme="light"] .placeholder-white\/50::placeholder { color: #94A3B8; }
 
-/* The page-level dark-bg tokens (`bg-bg`, `bg-bg-card`, `bg-bg-surface`) are
-   already redefined as light values in tailwind.config.js, so they re-skin
-   automatically. Sidebar / TopBar / pages that use those tokens become
-   white/cream without further changes. */
-
-/* The .landing-root scope keeps its own typography / colors via CSS
-   variables — restate the body color override there so it isn't overridden
-   by the [data-theme="light"] body rule above. */
+/* Public landing / login (.landing-root) keep their warm palette. Restate
+   the body color override there so it isn't shadowed by the rules above. */
 [data-theme="light"] .landing-root { color: var(--charcoal); }
