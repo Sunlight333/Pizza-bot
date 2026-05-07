@@ -29,6 +29,11 @@ services:
     build: ./backend
     restart: always
     env_file: .env
+    # Bound to 127.0.0.1 so the host nginx (the public reverse proxy on this
+    # VPS) can reach uvicorn via its `pizzabot_backend → 127.0.0.1:8000`
+    # upstream. Not exposed to 0.0.0.0 — public access is only through nginx.
+    ports:
+      - "127.0.0.1:8000:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
