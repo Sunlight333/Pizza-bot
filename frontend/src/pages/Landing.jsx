@@ -1,6 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import {
+  AnimatePresence,
   motion,
   useScroll,
   useTransform,
@@ -19,9 +28,10 @@ import {
   Wheat,
   Wallet,
   Bike,
+  X,
 } from 'lucide-react'
 
-import HeroPizza3D from '@/components/landing/HeroPizza3D'
+import { getApiBase } from '@/utils/apiUrl'
 import '@/styles/landing.css'
 
 // -- Brand constants --------------------------------------------------------
@@ -45,14 +55,224 @@ const BRAND = {
   etaMinutes: 35,
 }
 
-const WHATSAPP_URL = `https://wa.me/${BRAND.whatsappNumber}?text=${encodeURIComponent(
-  BRAND.whatsappText
-)}`
-
 // Reusable motion preset for entry-on-scroll
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
   show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] } },
+}
+
+// =========================================================================
+// Live WhatsApp wiring
+// -------------------------------------------------------------------------
+// Polls the backend for the currently-paired WhatsApp number (the one the
+// bot is connected to via Evolution API). Every CTA on the page routes to
+// that live number. If the bot isn't paired (status != "open") the buttons
+// open a friendly modal instead of sending the customer to a dead chat.
+// =========================================================================
+async function fetchWhatsappStatus() {
+  const url = `${getApiBase()}/api/evolution/public/whatsapp`
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout?.(5000),
+  })
+  if (!res.ok) throw new Error(`status ${res.status}`)
+  return res.json() // { connected: bool, phone: string|null, status: string }
+}
+
+function useWhatsappStatus() {
+  return useQuery({
+    queryKey: ['public-whatsapp'],
+    queryFn: fetchWhatsappStatus,
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  })
+}
+
+const WhatsAppContext = createContext(null)
+
+function WhatsAppProvider({ children }) {
+  const { data, isLoading } = useWhatsappStatus()
+  const [offlineOpen, setOfflineOpen] = useState(false)
+
+  const connected = !!data?.connected
+  const phone = data?.phone || null
+  const url = connected
+    ? `https://wa.me/${phone}?text=${encodeURIComponent(BRAND.whatsappText)}`
+    : null
+
+  const value = useMemo(
+    () => ({
+      connected,
+      phone,
+      url,
+      isLoading,
+      openOffline: () => setOfflineOpen(true),
+    }),
+    [connected, phone, url, isLoading],
+  )
+
+  return (
+    <WhatsAppContext.Provider value={value}>
+      {children}
+      <WhatsAppOfflineModal open={offlineOpen} onClose={() => setOfflineOpen(false)} />
+    </WhatsAppContext.Provider>
+  )
+}
+
+function useWhatsapp() {
+  return (
+    useContext(WhatsAppContext) ?? {
+      connected: false,
+      phone: null,
+      url: null,
+      isLoading: false,
+      openOffline: () => {},
+    }
+  )
+}
+
+/**
+ * Smart link: when the bot is paired, renders an `<a>` to wa.me/<live-number>;
+ * when it isn't, renders a `<button>` that opens the reassuring modal. Same
+ * className/children API so existing CTAs swap in directly.
+ */
+function WhatsAppLink({ children, className, ...rest }) {
+  const { connected, url, openOffline } = useWhatsapp()
+  if (connected && url) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={className}
+        {...rest}
+      >
+        {children}
+      </a>
+    )
+  }
+  return (
+    <button type="button" onClick={openOffline} className={className} {...rest}>
+      {children}
+    </button>
+  )
+}
+
+function WhatsAppOfflineModal({ open, onClose }) {
+  // Lock body scroll while open
+  useEffect(() => {
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prev
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open, onClose])
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="fixed inset-0 z-[60] flex items-center justify-center px-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
+          aria-modal="true"
+          role="dialog"
+          aria-labelledby="wa-offline-title"
+        >
+          <button
+            type="button"
+            aria-label="Fechar"
+            onClick={onClose}
+            className="absolute inset-0 cursor-default"
+            style={{
+              background: 'rgba(31,24,21,0.55)',
+              backdropFilter: 'blur(6px)',
+              WebkitBackdropFilter: 'blur(6px)',
+            }}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 14 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.97, y: 6 }}
+            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+            className="relative landing-card-3d w-full max-w-md p-7 sm:p-8"
+            style={{ borderRadius: 24 }}
+          >
+            <button
+              type="button"
+              aria-label="Fechar"
+              onClick={onClose}
+              className="absolute top-4 right-4 w-9 h-9 rounded-full grid place-items-center transition-colors"
+              style={{ color: 'var(--charcoal-soft)' }}
+            >
+              <X size={18} />
+            </button>
+
+            <div
+              className="w-12 h-12 rounded-2xl grid place-items-center mb-5"
+              style={{
+                background: 'linear-gradient(180deg, #FFE4A8 0%, #FFD367 100%)',
+                color: 'var(--charcoal)',
+                boxShadow: '0 6px 14px -6px rgba(139,26,26,0.4)',
+              }}
+            >
+              <MessageCircle size={22} />
+            </div>
+
+            <span className="landing-eyebrow">Atendimento</span>
+            <h3
+              id="wa-offline-title"
+              className="landing-display text-2xl sm:text-3xl mt-3"
+            >
+              A gente já tá voltando.
+            </h3>
+            <p
+              className="mt-4 text-[15px] leading-relaxed"
+              style={{ color: 'var(--charcoal-soft)' }}
+            >
+              Nosso WhatsApp está sendo configurado nesse exato momento.
+              Pode <strong>ligar agora pelo telefone</strong> que a gente
+              atende rapidinho — ou volte em alguns minutos pra fazer o
+              pedido por mensagem.
+            </p>
+
+            <div className="mt-7 flex flex-col sm:flex-row gap-3">
+              <a
+                href={`tel:+${BRAND.whatsappNumber}`}
+                className="btn-ember flex-1 text-center justify-center"
+                onClick={onClose}
+              >
+                <Phone size={18} />
+                Ligar para {BRAND.phone}
+              </a>
+              <button
+                type="button"
+                onClick={onClose}
+                className="btn-outline flex-1 justify-center"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <p
+              className="mt-5 text-xs"
+              style={{ color: 'var(--charcoal-soft)' }}
+            >
+              Atendimento {BRAND.hoursShort}
+            </p>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
 }
 
 // =========================================================================
@@ -79,17 +299,16 @@ function Nav() {
     >
       <div className="max-w-7xl mx-auto px-5 md:px-8 h-16 md:h-20 flex items-center justify-between">
         <a href="#top" className="flex items-center gap-2.5">
-          <span
-            className="w-9 h-9 rounded-xl grid place-items-center text-white font-bold"
+          <img
+            src="/images/landing/logo.png"
+            alt={BRAND.name}
+            className="w-10 h-10 rounded-xl object-cover"
             style={{
-              background: 'linear-gradient(180deg, #FF7B45 0%, #B92424 100%)',
               boxShadow:
-                '0 1px 0 rgba(255,255,255,0.3) inset, 0 -4px 8px -4px rgba(0,0,0,0.3) inset, 0 8px 18px -8px rgba(139,26,26,0.6)',
+                '0 1px 0 rgba(255,255,255,0.4) inset, 0 8px 18px -8px rgba(139,26,26,0.45)',
             }}
-            aria-hidden="true"
-          >
-            F
-          </span>
+            draggable="false"
+          />
           <span className="font-display text-lg" style={{ color: 'var(--charcoal)' }}>
             {BRAND.name}
           </span>
@@ -102,16 +321,11 @@ function Nav() {
           <a href="#entrega" className="hover:text-[var(--ovenred)] transition-colors">Entrega</a>
         </nav>
 
-        <a
-          href={WHATSAPP_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn-whatsapp text-sm px-4 py-2.5"
-        >
+        <WhatsAppLink className="btn-whatsapp text-sm px-4 py-2.5">
           <MessageCircle size={16} />
           <span className="hidden sm:inline">Pedir pelo WhatsApp</span>
           <span className="sm:hidden">Pedir</span>
-        </a>
+        </WhatsAppLink>
       </div>
     </header>
   )
@@ -181,11 +395,11 @@ function Hero() {
             </motion.p>
 
             <motion.div variants={fadeUp} className="mt-9 flex flex-wrap gap-3">
-              <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="btn-whatsapp">
+              <WhatsAppLink className="btn-whatsapp">
                 <MessageCircle size={18} />
                 Pedir agora pelo WhatsApp
                 <ArrowRight size={16} className="opacity-70" />
-              </a>
+              </WhatsAppLink>
               <a href="#cardapio" className="btn-outline">
                 Ver cardápio
               </a>
@@ -211,64 +425,77 @@ function Hero() {
             </motion.div>
           </motion.div>
 
-          {/* Right — 3D pizza with floating glass chips */}
+          {/* Right — clean paper-stock card, pizza inside, with overlapping
+              glass chips on the edges. Matches the rest of the landing's
+              card system (story / featured / offers). */}
           <motion.div
-            className="lg:col-span-6 relative h-[420px] sm:h-[520px] lg:h-[600px]"
+            className="lg:col-span-6 flex justify-center"
             style={{ y: yPizza, opacity }}
-            initial={{ opacity: 0, scale: 0.92 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
           >
-            {/* Warm halo behind the pizza */}
-            <div
-              aria-hidden="true"
-              className="landing-glow-halo"
-              style={{ inset: '12% 10% 12% 10%' }}
-            />
-            <HeroPizza3D />
-
-            {/* Floating chip — top-right: forno a lenha */}
-            <motion.div
-              className="landing-chip absolute top-6 right-2 sm:right-8 landing-float-slow"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.6, duration: 0.6 }}
-            >
-              <Flame size={14} style={{ color: 'var(--ovenred)' }} />
-              <span>Forno a lenha · 380°C</span>
-            </motion.div>
-
-            {/* Floating chip — left: 48h dough */}
-            <motion.div
-              className="landing-chip absolute top-1/3 left-0 sm:left-4 landing-float-mid"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.8, duration: 0.6 }}
-            >
-              <Wheat size={14} style={{ color: 'var(--ovenred)' }} />
-              <span>Massa fermentada 48h</span>
-            </motion.div>
-
-            {/* Floating ETA card — bottom-right, more substantial */}
-            <motion.div
-              className="absolute bottom-2 right-0 sm:right-6 landing-card-3d px-5 py-4 flex items-center gap-3"
-              style={{ borderRadius: 18 }}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1, duration: 0.6 }}
-            >
-              <span className="step-marker" style={{ width: 36, height: 36, borderRadius: 12 }}>
-                <Bike size={18} />
-              </span>
-              <div className="text-left">
-                <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--ovenred)' }}>
-                  Saindo agora
-                </div>
-                <div className="font-display text-base">
-                  Chega em ~{BRAND.etaMinutes} min
+            <div className="relative w-full max-w-[460px]">
+              <div className="hero-card">
+                <div className="hero-card-image">
+                  <img
+                    src="/images/landing/hero/closeup-desktop.png"
+                    alt="Pizza margherita saindo do forno a lenha"
+                    draggable="false"
+                  />
+                  <div className="hero-card-caption">
+                    <div>
+                      <div className="eyebrow">Margherita</div>
+                      <div className="title">Saída do forno</div>
+                    </div>
+                    <span className="badge">~90s no forno</span>
+                  </div>
                 </div>
               </div>
-            </motion.div>
+
+              {/* Floating chip — top-right: forno a lenha */}
+              <motion.div
+                className="landing-chip absolute -top-3 -right-3 sm:-right-6 landing-float-slow"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.6, duration: 0.6 }}
+              >
+                <Flame size={14} style={{ color: 'var(--ovenred)' }} />
+                <span>Forno a lenha · 380°C</span>
+              </motion.div>
+
+              {/* Floating chip — left: 48h dough */}
+              <motion.div
+                className="landing-chip absolute top-1/3 -left-3 sm:-left-6 landing-float-mid"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.8, duration: 0.6 }}
+              >
+                <Wheat size={14} style={{ color: 'var(--ovenred)' }} />
+                <span>Massa fermentada 48h</span>
+              </motion.div>
+
+              {/* Floating ETA card — bottom-right, overlapping the card */}
+              <motion.div
+                className="absolute -bottom-6 -right-3 sm:-right-8 landing-card-3d px-5 py-4 flex items-center gap-3"
+                style={{ borderRadius: 18 }}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1, duration: 0.6 }}
+              >
+                <span className="step-marker" style={{ width: 36, height: 36, borderRadius: 12 }}>
+                  <Bike size={18} />
+                </span>
+                <div className="text-left">
+                  <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--ovenred)' }}>
+                    Saindo agora
+                  </div>
+                  <div className="font-display text-base">
+                    Chega em ~{BRAND.etaMinutes} min
+                  </div>
+                </div>
+              </motion.div>
+            </div>
           </motion.div>
         </div>
       </div>
@@ -317,68 +544,49 @@ function Story() {
   return (
     <section className="py-24 md:py-32 relative">
       <div className="max-w-7xl mx-auto px-5 md:px-8 grid lg:grid-cols-12 gap-10 lg:gap-16 items-center">
-        {/* Left — image collage */}
-        <div className="lg:col-span-7 grid grid-cols-6 grid-rows-6 gap-4 h-[460px] sm:h-[560px]">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-80px' }}
-            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-            className="photo-3d col-span-4 row-span-4"
-            style={{
-              backgroundImage: 'url(/images/landing/story/oven-flames-detail.png)',
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }}
-          />
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-80px' }}
-            transition={{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-            className="photo-3d col-span-2 row-span-3"
-            style={{
-              backgroundImage: 'url(/images/landing/story/dough-stretching.png)',
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }}
-          />
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-80px' }}
-            transition={{ duration: 0.7, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            className="photo-3d col-span-2 row-span-3"
-            style={{
-              backgroundImage: 'url(/images/landing/story/ingredients-knolling.png)',
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }}
-          />
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-80px' }}
-            transition={{ duration: 0.7, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="photo-3d col-span-3 row-span-2"
-            style={{
-              backgroundImage: 'url(/images/landing/story/pizzaiolo-back-at-oven.png)',
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }}
-          />
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-80px' }}
-            transition={{ duration: 0.7, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            className="photo-3d col-span-3 row-span-2"
-            style={{
-              backgroundImage: 'url(/images/landing/story/cooling-rack-trio.png)',
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }}
-          />
+        {/* Left — image collage with explicit grid-template-areas
+           so cells never collapse. 6 cols × 6 rows = 36 cells, exact fit. */}
+        <div
+          className="lg:col-span-7 gap-4 h-[460px] sm:h-[560px] lg:h-[640px]"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(6, 1fr)',
+            gridTemplateRows: 'repeat(6, 1fr)',
+            gridTemplateAreas: `
+              "oven oven oven oven dough dough"
+              "oven oven oven oven dough dough"
+              "oven oven oven oven ingr ingr"
+              "oven oven oven oven ingr ingr"
+              "pzia pzia store store cool cool"
+              "pzia pzia store store cool cool"
+            `,
+          }}
+        >
+          {[
+            { area: 'oven', src: '/images/landing/story/oven-flames-detail.png', pos: 'center', delay: 0 },
+            { area: 'dough', src: '/images/landing/story/dough-stretching.png', pos: 'center', delay: 0.08 },
+            { area: 'ingr', src: '/images/landing/story/ingredients-knolling.png', pos: 'center', delay: 0.16 },
+            { area: 'pzia', src: '/images/landing/story/pizzaiolo-back-at-oven.png', pos: '50% 35%', delay: 0.24 },
+            { area: 'store', src: '/images/landing/story/storefront-blue-hour.png', pos: 'center', delay: 0.32 },
+            { area: 'cool', src: '/images/landing/story/cooling-rack-trio.png', pos: 'center', delay: 0.40 },
+          ].map((p) => (
+            <motion.div
+              key={p.area}
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-80px' }}
+              transition={{ duration: 0.7, delay: p.delay, ease: [0.22, 1, 0.36, 1] }}
+              className="photo-3d"
+              style={{
+                gridArea: p.area,
+                backgroundImage: `url(${p.src})`,
+                backgroundSize: 'cover',
+                backgroundPosition: p.pos,
+                minHeight: 0,
+                minWidth: 0,
+              }}
+            />
+          ))}
         </div>
 
         {/* Right — copy */}
@@ -473,16 +681,13 @@ function FeaturedMenu() {
               As mais pedidas da casa.
             </h2>
           </div>
-          <a
-            href={WHATSAPP_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+          <WhatsAppLink
             className="text-sm font-semibold inline-flex items-center gap-1.5 group"
             style={{ color: 'var(--ovenred)' }}
           >
             Ver cardápio completo
             <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
-          </a>
+          </WhatsAppLink>
         </div>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -601,10 +806,10 @@ function HowItWorks() {
         </div>
 
         <div className="mt-14 text-center">
-          <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="btn-whatsapp">
+          <WhatsAppLink className="btn-whatsapp">
             <MessageCircle size={18} />
             Começar pedido agora
-          </a>
+          </WhatsAppLink>
         </div>
       </div>
     </section>
@@ -640,6 +845,14 @@ function Offers() {
       price: '2 x 1',
       from: '',
     },
+    {
+      tag: 'BALCÃO',
+      title: 'Retirada rápida',
+      desc: 'Pediu pelo zap, passou e levou. Sem fila, sem taxa de entrega.',
+      image: '/images/landing/offers/promo-balcao-rapido.png',
+      price: '−R$ 6',
+      from: 'sem taxa',
+    },
   ]
 
   return (
@@ -661,7 +874,7 @@ function Offers() {
           </span>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {offers.map((o, i) => (
             <motion.article
               key={o.title}
@@ -688,16 +901,13 @@ function Offers() {
                       </span>
                     )}
                   </div>
-                  <a
-                    href={WHATSAPP_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <WhatsAppLink
                     className="text-sm font-semibold inline-flex items-center gap-1.5 group"
                     style={{ color: 'var(--ovenred)' }}
                   >
                     Pedir
                     <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
-                  </a>
+                  </WhatsAppLink>
                 </div>
               </div>
             </motion.article>
@@ -734,7 +944,7 @@ function Reviews() {
       rating: 5,
       quote:
         'Já provamos várias do bairro, essa é disparada a melhor. A massa lembra pizza de Nápoles. Os meninos pedem todo fim de semana.',
-      image: '/images/landing/reviews/thank-you-wall.png',
+      initials: 'FT',
       meta: 'Sumarezinho · este mês',
     },
   ]
@@ -799,13 +1009,26 @@ function Reviews() {
                 “{r.quote}”
               </blockquote>
               <figcaption className="mt-5 flex items-center gap-3">
-                <span
-                  className="w-10 h-10 rounded-full bg-center bg-cover ring-2 ring-white"
-                  style={{
-                    backgroundImage: `url(${r.image})`,
-                    boxShadow: '0 6px 14px -6px rgba(31,24,21,0.4)',
-                  }}
-                />
+                {r.image ? (
+                  <span
+                    className="w-10 h-10 rounded-full bg-center bg-cover ring-2 ring-white shrink-0"
+                    style={{
+                      backgroundImage: `url(${r.image})`,
+                      boxShadow: '0 6px 14px -6px rgba(31,24,21,0.4)',
+                    }}
+                  />
+                ) : (
+                  <span
+                    className="w-10 h-10 rounded-full grid place-items-center ring-2 ring-white shrink-0 font-display text-sm"
+                    style={{
+                      background: 'linear-gradient(180deg, #FFE4A8, #FFD367)',
+                      color: 'var(--charcoal)',
+                      boxShadow: '0 6px 14px -6px rgba(31,24,21,0.4)',
+                    }}
+                  >
+                    {r.initials}
+                  </span>
+                )}
                 <div>
                   <div className="font-semibold text-sm">{r.name}</div>
                   <div className="text-xs" style={{ color: 'var(--charcoal-soft)' }}>{r.meta}</div>
@@ -962,16 +1185,11 @@ function FinalCTA() {
           </p>
 
           <div className="mt-10 flex flex-wrap gap-4">
-            <a
-              href={WHATSAPP_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-whatsapp text-base px-6 py-4"
-            >
+            <WhatsAppLink className="btn-whatsapp text-base px-6 py-4">
               <MessageCircle size={20} />
               Pedir agora pelo WhatsApp
               <ArrowRight size={18} className="opacity-80" />
-            </a>
+            </WhatsAppLink>
             <a
               href={`tel:+${BRAND.whatsappNumber}`}
               className="inline-flex items-center justify-center gap-2 px-5 py-4 rounded-2xl border text-base font-semibold transition-colors"
@@ -1034,17 +1252,16 @@ function Footer() {
       <div className="max-w-7xl mx-auto px-5 md:px-8 grid md:grid-cols-12 gap-10">
         <div className="md:col-span-4">
           <div className="flex items-center gap-2.5 mb-4">
-            <span
-              className="w-9 h-9 rounded-xl grid place-items-center text-white font-bold"
+            <img
+              src="/images/landing/logo.png"
+              alt={BRAND.name}
+              className="w-10 h-10 rounded-xl object-cover"
               style={{
-                background: 'linear-gradient(180deg, #FF7B45 0%, #B92424 100%)',
                 boxShadow:
-                  '0 1px 0 rgba(255,255,255,0.3) inset, 0 -4px 8px -4px rgba(0,0,0,0.3) inset, 0 8px 18px -8px rgba(139,26,26,0.6)',
+                  '0 1px 0 rgba(255,255,255,0.4) inset, 0 8px 18px -8px rgba(139,26,26,0.45)',
               }}
-              aria-hidden
-            >
-              F
-            </span>
+              draggable="false"
+            />
             <span className="font-display text-lg">{BRAND.name}</span>
           </div>
           <p className="text-sm" style={{ color: 'var(--charcoal-soft)' }}>
@@ -1075,9 +1292,9 @@ function Footer() {
             {BRAND.address}
           </p>
           <p className="text-sm mt-2" style={{ color: 'var(--charcoal-soft)' }}>
-            <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="hover:underline">
+            <WhatsAppLink className="hover:underline">
               WhatsApp: {BRAND.phone}
-            </a>
+            </WhatsAppLink>
           </p>
         </div>
 
@@ -1119,16 +1336,13 @@ function Footer() {
 // =========================================================================
 function FloatingWhatsApp() {
   return (
-    <a
-      href={WHATSAPP_URL}
-      target="_blank"
-      rel="noopener noreferrer"
+    <WhatsAppLink
       aria-label="Pedir pelo WhatsApp"
       className="fixed bottom-5 right-5 z-50 md:hidden btn-whatsapp px-4 py-3 rounded-full"
       style={{ borderRadius: 999 }}
     >
       <MessageCircle size={20} />
-    </a>
+    </WhatsAppLink>
   )
 }
 
@@ -1147,21 +1361,23 @@ export default function Landing() {
   }, [])
 
   return (
-    <div className="landing-root min-h-screen">
-      <Nav />
-      <main>
-        <Hero />
-        <TrustMarquee />
-        <Story />
-        <FeaturedMenu />
-        <HowItWorks />
-        <Offers />
-        <Reviews />
-        <Delivery />
-        <FinalCTA />
-      </main>
-      <Footer />
-      <FloatingWhatsApp />
-    </div>
+    <WhatsAppProvider>
+      <div className="landing-root min-h-screen">
+        <Nav />
+        <main>
+          <Hero />
+          <TrustMarquee />
+          <Story />
+          <FeaturedMenu />
+          <HowItWorks />
+          <Offers />
+          <Reviews />
+          <Delivery />
+          <FinalCTA />
+        </main>
+        <Footer />
+        <FloatingWhatsApp />
+      </div>
+    </WhatsAppProvider>
   )
 }

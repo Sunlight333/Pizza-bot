@@ -27,6 +27,61 @@ from app.schemas.menu import (
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
+# Public, unauthenticated subset — used by the customer-facing landing page
+# so it can render the real, live menu (same products the bot quotes from)
+# without exposing fiscal/internal fields. Mounted at /api/menu/public in
+# main.py.
+public_router = APIRouter()
+
+
+@public_router.get("/products")
+async def list_public_products(db: AsyncSession = Depends(get_db)):
+    """
+    Active products with the minimal fields the landing page needs.
+    Strips fiscal codes (NCM/CFOP/etc) and Datacaixa-specific data — none of
+    that should leak to a public endpoint. The image URLs are returned
+    relative; the frontend prefixes them with the API base when needed.
+    """
+    res = await db.execute(
+        select(Product, Category)
+        .join(Category, Product.category_id == Category.id)
+        .where(Product.is_active.is_(True), Category.is_active.is_(True))
+        .order_by(Category.display_order, Category.id, Product.name)
+    )
+    out = []
+    for p, cat in res.all():
+        # Mirror the resolution Menu.jsx already uses: prefer image_urls;
+        # fall back to image_url; skip the HIDDEN_IMAGE sentinel so the
+        # operator can still hide a product from the public page.
+        urls = [u for u in (p.image_urls or []) if u and u != "__hidden__"]
+        if not urls and p.image_url and p.image_url != "__hidden__":
+            urls = [p.image_url]
+        out.append({
+            "id": p.id,
+            "name": p.name,
+            "description": p.description,
+            "category_id": p.category_id,
+            "category_name": cat.name,
+            "is_pizza": p.is_pizza,
+            "allows_half": p.allows_half,
+            "sizes": p.sizes or [],
+            "image_urls": urls,
+        })
+    return out
+
+
+@public_router.get("/categories")
+async def list_public_categories(db: AsyncSession = Depends(get_db)):
+    res = await db.execute(
+        select(Category).where(Category.is_active.is_(True)).order_by(
+            Category.display_order, Category.id
+        )
+    )
+    return [
+        {"id": c.id, "name": c.name, "display_order": c.display_order}
+        for c in res.scalars().all()
+    ]
+
 
 # ---------- Categories ----------
 

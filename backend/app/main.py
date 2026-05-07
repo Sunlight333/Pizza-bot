@@ -78,6 +78,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 app.include_router(health.router, prefix="/api")
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(menu.router, prefix="/api/menu", tags=["menu"])
+app.include_router(menu.public_router, prefix="/api/menu/public", tags=["menu"])
 app.include_router(delivery.router, prefix="/api/delivery", tags=["delivery"])
 app.include_router(customers.router, prefix="/api/customers", tags=["customers"])
 app.include_router(orders.router, prefix="/api/orders", tags=["orders"])
@@ -87,6 +88,7 @@ app.include_router(bridge.router, prefix="/api/bridge", tags=["bridge"])
 app.include_router(bot_config.router, prefix="/api/bot/config", tags=["bot"])
 app.include_router(conversations.router, prefix="/api/conversations", tags=["conversations"])
 app.include_router(evolution.router, prefix="/api/evolution", tags=["evolution"])
+app.include_router(evolution.public_router, prefix="/api/evolution/public", tags=["evolution"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 
 # Uploaded product photos (see /api/menu/products/upload-image). The mount lives

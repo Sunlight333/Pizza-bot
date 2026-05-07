@@ -15,6 +15,47 @@ from app.services.whatsapp import client as wa_client
 log = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
+# Public, unauthenticated surface — used by the marketing landing page so it
+# can route customers to the same WhatsApp number the bot is currently paired
+# with, and fall back to a friendly modal when the number isn't connected.
+public_router = APIRouter()
+
+
+@public_router.get("/whatsapp")
+async def public_whatsapp():
+    """
+    Minimal public summary of the WhatsApp connection state.
+
+    Returns: { connected: bool, phone: str | None, status: str }
+
+    `phone` is the digits-only number (e.g. "5517991289777"), suitable to
+    drop into a `wa.me/<phone>` link. We only expose it when the instance
+    is actually paired (`status == "open"`) — no PII leaks while the bot is
+    disconnected. Cached for ~30s on the client; cheap on the server.
+    """
+    info = await wa_client.fetch_instance()
+    if isinstance(info, dict) and "instance" in info:
+        info = info["instance"]
+    if not isinstance(info, dict):
+        info = {}
+
+    status = (info.get("connectionStatus") or info.get("status") or "unknown")
+    status = str(status).lower()
+
+    owner_jid = info.get("ownerJid") or info.get("owner")
+    phone = info.get("number")
+    if not phone and isinstance(owner_jid, str):
+        phone = owner_jid.split("@")[0]
+    if isinstance(phone, str):
+        phone = "".join(ch for ch in phone if ch.isdigit()) or None
+
+    connected = status == "open" and bool(phone)
+    return {
+        "connected": connected,
+        "phone": phone if connected else None,
+        "status": status,
+    }
+
 
 @router.get("/status")
 async def status():

@@ -240,6 +240,87 @@
   z-index: 0;
 }
 
+/* =========================================================================
+   Hero pizza card — paper-stock card with matted image, warm rim, layered
+   shadow. Matches .landing-card-3d aesthetic but is the hero centerpiece.
+   ========================================================================= */
+.hero-card {
+  position: relative;
+  border-radius: 28px;
+  padding: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbf6ec 100%);
+  border: 1px solid rgba(31, 24, 21, 0.06);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.9) inset,
+    0 -22px 40px -28px rgba(139, 26, 26, 0.18) inset,
+    0 28px 50px -28px rgba(31, 24, 21, 0.45),
+    0 80px 100px -50px rgba(255, 107, 53, 0.30);
+}
+.hero-card-image {
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  aspect-ratio: 4 / 5;
+  background: #1F1815;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.4) inset,
+    0 12px 30px -16px rgba(31, 24, 21, 0.4);
+}
+.hero-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* Bottom gradient + caption inside the image, magazine-card style */
+.hero-card-image::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 45%;
+  background: linear-gradient(180deg, rgba(31,24,21,0) 0%, rgba(31,24,21,0.65) 100%);
+  pointer-events: none;
+}
+.hero-card-caption {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 16px;
+  z-index: 2;
+  color: var(--cream);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.hero-card-caption .eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: rgba(255,225,180,0.85);
+  font-family: 'Space Grotesk', Inter, sans-serif;
+}
+.hero-card-caption .title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.35rem;
+  line-height: 1.1;
+  margin-top: 2px;
+}
+.hero-card-caption .badge {
+  background: linear-gradient(180deg, #FFE4A8 0%, #FFD367 100%);
+  color: var(--charcoal);
+  font-family: 'Space Grotesk', Inter, sans-serif;
+  font-weight: 700;
+  font-size: 0.7rem;
+  padding: 0.4rem 0.65rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.6) inset,
+    0 6px 14px -6px rgba(139, 26, 26, 0.4);
+}
+
 /* Number marker for steps */
 .step-marker {
   display: inline-flex;

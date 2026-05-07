@@ -45,6 +45,12 @@ async def _check_redis() -> dict:
 
 
 async def _check_evolution() -> dict:
+    """
+    "OK" means WhatsApp is actually paired and online — i.e. Evolution
+    reports `state == "open"`. The container being reachable is not enough:
+    while the bot is in `connecting` / `close` no message will deliver, so
+    the dashboard should reflect that as not-OK.
+    """
     if not settings.evolution_api_url:
         return {"ok": False, "error": "not configured"}
     try:
@@ -53,7 +59,17 @@ async def _check_evolution() -> dict:
                 f"{settings.evolution_api_url.rstrip('/')}/instance/connectionState/{settings.evolution_instance_name}",
                 headers={"apikey": settings.evolution_api_key},
             )
-            return {"ok": r.status_code < 500, "http": r.status_code}
+        if r.status_code >= 500:
+            return {"ok": False, "error": f"http {r.status_code}"}
+        data = r.json() if "application/json" in r.headers.get("content-type", "") else {}
+        body = data.get("instance", data) if isinstance(data, dict) else {}
+        state = body.get("state") or body.get("connectionStatus") or "unknown"
+        state = str(state).lower()
+        if state == "open":
+            return {"ok": True, "state": state}
+        # "connecting", "close", "unknown" — surface the state as the
+        # error label so the dashboard renders it directly.
+        return {"ok": False, "state": state, "error": state}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
