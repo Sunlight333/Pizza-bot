@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { LogOut } from 'lucide-react'
+import { LogOut, Moon, Sun } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
 import GlobalSearch from './GlobalSearch'
 import NotificationsBell from './NotificationsBell'
 
@@ -19,8 +20,11 @@ export default function TopBar() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
+  const theme = useThemeStore((s) => s.theme)
+  const toggleTheme = useThemeStore((s) => s.toggleTheme)
 
   const title = TITLES[location.pathname] ?? 'Pizzabot'
+  const isDark = theme === 'dark'
 
   const handleLogout = () => {
     logout()
@@ -34,10 +38,32 @@ export default function TopBar() {
       <GlobalSearch />
 
       <div className="ml-auto flex items-center gap-2">
+        <button
+          onClick={toggleTheme}
+          aria-label={isDark ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+          title={isDark ? 'Tema claro' : 'Tema escuro'}
+          className="relative p-2 rounded-xl text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+        >
+          {/* Crossfading icons — the inactive one fades out, the active one in.
+              No layout shift, no flicker. */}
+          <Sun
+            size={18}
+            className={`transition-all duration-300 ${
+              isDark ? 'opacity-0 scale-75 -rotate-45' : 'opacity-100 scale-100 rotate-0'
+            }`}
+          />
+          <Moon
+            size={18}
+            className={`absolute inset-0 m-auto transition-all duration-300 ${
+              isDark ? 'opacity-100 scale-100 rotate-0' : 'opacity-0 scale-75 rotate-45'
+            }`}
+          />
+        </button>
+
         <NotificationsBell />
 
         <div className="flex items-center gap-2 ml-2">
-          <div className="w-8 h-8 rounded-full bg-primary-gradient flex items-center justify-center text-sm font-semibold">
+          <div className="w-8 h-8 rounded-full bg-primary-gradient flex items-center justify-center text-sm font-semibold text-white">
             {user?.username?.[0]?.toUpperCase() ?? '?'}
           </div>
           <span className="text-sm text-white/70">{user?.username ?? 'user'}</span>
