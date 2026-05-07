@@ -9,20 +9,23 @@
    ========================================================================= */
 :root,
 [data-theme="light"] {
-  --c-primary:           #4F46E5;
-  --c-primary-deep:      #4338CA;
+  /* Primary is now blue (Tailwind blue-600 → blue-500). The previous
+     indigo+violet read too much like Linear/Vercel; user prefers a plain
+     blue SaaS palette. */
+  --c-primary:           #2563EB;
+  --c-primary-deep:      #1D4ED8;
   --c-secondary:         #0F172A;
   --c-bg:                #F7F8FB;
   --c-bg-surface:        #FFFFFF;
   --c-bg-card:           #FFFFFF;
   --c-glass-border:      #E5E9F0;
   --c-glass-gradient:    linear-gradient(180deg, #FFFFFF 0%, #FFFFFF 100%);
-  --c-primary-gradient:  linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
-  --c-glow-primary:      0 10px 28px -10px rgba(79, 70, 229, 0.45);
+  --c-primary-gradient:  linear-gradient(135deg, #2563EB 0%, #3B82F6 100%);
+  --c-glow-primary:      0 10px 28px -10px rgba(37, 99, 235, 0.45);
 
   --body-bg:
-    radial-gradient(900px 500px at 8% -5%, rgba(79,70,229,0.05), transparent 55%),
-    radial-gradient(900px 500px at 100% 5%, rgba(168,85,247,0.04), transparent 60%),
+    radial-gradient(900px 500px at 8% -5%, rgba(37,99,235,0.05), transparent 55%),
+    radial-gradient(900px 500px at 100% 5%, rgba(59,130,246,0.04), transparent 60%),
     #F7F8FB;
   --body-color:          #0F172A;
 
@@ -33,17 +36,17 @@
     0 1px 0 rgba(255, 255, 255, 0.7) inset,
     0 8px 20px -10px rgba(15, 23, 42, 0.08);
   --card-blur:           none;
-  --card-hover-border:   #C7D2FE;
+  --card-hover-border:   #BFDBFE;
   --card-hover-shadow:
     0 4px 8px rgba(15, 23, 42, 0.06),
     0 1px 0 rgba(255, 255, 255, 0.9) inset,
     0 18px 32px -16px rgba(15, 23, 42, 0.14);
 
-  --btn-primary-bg:      linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+  --btn-primary-bg:      linear-gradient(135deg, #2563EB 0%, #3B82F6 100%);
   --btn-primary-shadow:
     0 1px 0 rgba(255, 255, 255, 0.20) inset,
     0 -6px 12px -8px rgba(0, 0, 0, 0.20) inset,
-    0 10px 28px -10px rgba(79, 70, 229, 0.45);
+    0 10px 28px -10px rgba(37, 99, 235, 0.45);
 
   --btn-ghost-bg:        #F1F5F9;
   --btn-ghost-color:     #0F172A;
@@ -55,14 +58,14 @@
   --input-color:         #0F172A;
   --input-border:        #E5E9F0;
   --input-placeholder:   #94A3B8;
-  --input-focus-bdr:     #818CF8;
-  --input-focus-ring:    rgba(79, 70, 229, 0.18);
+  --input-focus-bdr:     #93C5FD;
+  --input-focus-ring:    rgba(37, 99, 235, 0.18);
 
   --skeleton-grad:
     linear-gradient(90deg, rgba(15,23,42,0.04) 0%, rgba(15,23,42,0.08) 50%, rgba(15,23,42,0.04) 100%);
   --scrollbar-thumb:     rgba(15, 23, 42, 0.12);
-  --scrollbar-thumb-hover: rgba(79, 70, 229, 0.40);
-  --status-pulse-color:  rgba(79, 70, 229, 0.6);
+  --scrollbar-thumb-hover: rgba(37, 99, 235, 0.40);
+  --status-pulse-color:  rgba(37, 99, 235, 0.6);
 }
 
 /* Dark theme — restoration of the very first design (deep navy, orange/gold
@@ -289,16 +292,19 @@
    touching individual files. Slate (#0F172A / Tailwind slate-900) is the
    new dark color, matching the reference SaaS dashboard.
    ========================================================================= */
+/* Light-mode text contrast: the previous slate-400 mapping for /40/30 was
+   too faint on cream cards (the "PEDIDOS HOJE" / metadata labels were
+   barely legible). Bump everything one step darker so labels read clearly. */
 [data-theme="light"] .text-white          { color: #0F172A; }
 [data-theme="light"] .text-white\/90      { color: rgba(15, 23, 42, 0.92); }
 [data-theme="light"] .text-white\/80      { color: rgba(15, 23, 42, 0.82); }
-[data-theme="light"] .text-white\/70      { color: rgba(15, 23, 42, 0.72); }
-[data-theme="light"] .text-white\/60      { color: rgba(15, 23, 42, 0.62); }
-[data-theme="light"] .text-white\/50      { color: #64748B; }
-[data-theme="light"] .text-white\/40      { color: #94A3B8; }
-[data-theme="light"] .text-white\/30      { color: #94A3B8; }
-[data-theme="light"] .text-white\/20      { color: #CBD5E1; }
-[data-theme="light"] .text-white\/10      { color: #E2E8F0; }
+[data-theme="light"] .text-white\/70      { color: #334155; }    /* slate-700 */
+[data-theme="light"] .text-white\/60      { color: #475569; }    /* slate-600 */
+[data-theme="light"] .text-white\/50      { color: #475569; }
+[data-theme="light"] .text-white\/40      { color: #64748B; }    /* slate-500 */
+[data-theme="light"] .text-white\/30      { color: #64748B; }
+[data-theme="light"] .text-white\/20      { color: #94A3B8; }
+[data-theme="light"] .text-white\/10      { color: #CBD5E1; }
 
 [data-theme="light"] .bg-white\/5         { background-color: #F8FAFC; }
 [data-theme="light"] .bg-white\/10        { background-color: #F1F5F9; }
@@ -311,6 +317,44 @@
 [data-theme="light"] .placeholder-white\/40::placeholder,
 [data-theme="light"] .placeholder-white\/30::placeholder,
 [data-theme="light"] .placeholder-white\/50::placeholder { color: #94A3B8; }
+
+/* -- Chat bubbles & color-tinted surfaces -----------------------------------
+   These were drawn for a dark theme (faint primary tint + light pastel
+   text). On the light theme the pastel text disappears, so re-skin the
+   specific Tailwind utilities that drive the chat bubbles + a few other
+   common color-on-color combos. */
+[data-theme="light"] .bg-primary\/15        { background-color: rgba(37, 99, 235, 0.10); }
+[data-theme="light"] .bg-primary\/20        { background-color: rgba(37, 99, 235, 0.14); }
+[data-theme="light"] .bg-primary\/30        { background-color: rgba(37, 99, 235, 0.20); }
+[data-theme="light"] .border-primary\/30    { border-color: rgba(37, 99, 235, 0.35); }
+[data-theme="light"] .border-primary\/40    { border-color: rgba(37, 99, 235, 0.45); }
+[data-theme="light"] .border-primary\/60    { border-color: rgba(37, 99, 235, 0.60); }
+[data-theme="light"] .text-primary          { color: #2563EB; }
+
+[data-theme="light"] .bg-purple-500\/15     { background-color: #F3E8FF; }
+[data-theme="light"] .bg-purple-500\/20     { background-color: #EDE9FE; }
+[data-theme="light"] .border-purple-500\/30 { border-color: #C4B5FD; }
+[data-theme="light"] .text-purple-100       { color: #4C1D95; }
+[data-theme="light"] .text-purple-200       { color: #5B21B6; }
+
+/* Mid-saturation status backgrounds — used for chips, banners, alerts.
+   Light variants use the matching Tailwind 50/100 tints with darker text. */
+[data-theme="light"] .bg-success\/15        { background-color: #DCFCE7; }
+[data-theme="light"] .bg-success\/20        { background-color: #BBF7D0; }
+[data-theme="light"] .border-success\/30    { border-color: #86EFAC; }
+[data-theme="light"] .bg-danger\/15         { background-color: #FEE2E2; }
+[data-theme="light"] .bg-danger\/20         { background-color: #FECACA; }
+[data-theme="light"] .border-danger\/30     { border-color: #FCA5A5; }
+[data-theme="light"] .bg-warning\/15        { background-color: #FEF3C7; }
+[data-theme="light"] .border-warning\/30    { border-color: #FDE68A; }
+[data-theme="light"] .bg-accent\/10         { background-color: #FFEDD5; }
+[data-theme="light"] .bg-accent\/15         { background-color: #FFEDD5; }
+[data-theme="light"] .text-accent           { color: #C2410C; }
+
+/* Page-level cream backdrops (e.g., bg-bg/40 used on the chat panel) need
+   to match the light page BG, not show as a navy wash. */
+[data-theme="light"] .bg-bg\/40             { background-color: #F1F5F9; }
+[data-theme="light"] .bg-bg\/60             { background-color: #F8FAFC; }
 
 /* Public landing / login (.landing-root) keep their warm palette. Restate
    the body color override there so it isn't shadowed by the rules above. */

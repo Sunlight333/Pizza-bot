@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronDown, Activity } from 'lucide-react'
+import { ChevronDown, Activity, AlertTriangle, ShieldOff } from 'lucide-react'
 
 import { api } from '@/services/api'
-import { ASSETS } from '@/utils/assets'
 
 const LABELS = {
   postgres: 'Postgres',
@@ -12,6 +11,31 @@ const LABELS = {
   evolution: 'WhatsApp',
   bridge: 'Datacaixa',
   openai: 'OpenAI',
+}
+
+// Vector summary icon — readable in both light & dark themes (the previous
+// PNG assets were drawn for a dark backdrop and rendered as black blobs on
+// the cream/white surface).
+function SummaryIcon({ summary }) {
+  if (summary === 'ok') {
+    return (
+      <div className="icon-tile icon-tile-emerald" style={{ width: '1.75rem', height: '1.75rem', borderRadius: '0.6rem' }}>
+        <Activity size={14} />
+      </div>
+    )
+  }
+  if (summary === 'degraded') {
+    return (
+      <div className="icon-tile icon-tile-orange" style={{ width: '1.75rem', height: '1.75rem', borderRadius: '0.6rem' }}>
+        <AlertTriangle size={14} />
+      </div>
+    )
+  }
+  return (
+    <div className="icon-tile icon-tile-rose" style={{ width: '1.75rem', height: '1.75rem', borderRadius: '0.6rem' }}>
+      <ShieldOff size={14} />
+    </div>
+  )
 }
 
 function Dot({ ok }) {
@@ -56,12 +80,8 @@ export default function HealthWidget() {
         className="w-full flex items-center justify-between text-left"
       >
         <div className="flex items-center gap-2.5 text-sm">
-          <img
-            src={ASSETS.icons.health[summary]}
-            alt={summary}
-            className="w-7 h-7 rounded-lg ring-1 ring-glass-border shrink-0"
-          />
-          <span className="text-white/70">Saúde do sistema</span>
+          <SummaryIcon summary={summary} />
+          <span className="text-white/70 font-medium">Saúde do sistema</span>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
