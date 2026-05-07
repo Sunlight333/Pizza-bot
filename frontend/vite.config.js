@@ -13,6 +13,14 @@ export default defineConfig({
     host: true,
     port: 5173,
     watch: { usePolling: true },
+    // Vite 5 blocks unfamiliar Host headers by default. The site is fronted
+    // by nginx on planaltopizzasesorvetes.com, so the dev server must accept
+    // requests forwarded with that Host. Direct dashboard access on the IP
+    // (e.g. 157.230.9.42:5173) is implicitly allowed.
+    allowedHosts: [
+      'planaltopizzasesorvetes.com',
+      'www.planaltopizzasesorvetes.com',
+    ],
   },
   build: {
     sourcemap: false,
