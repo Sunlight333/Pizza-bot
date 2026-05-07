@@ -280,6 +280,16 @@
     animation: status-pulse 2.2s ease-out infinite;
   }
 
+  /* Health row — explicit hover/active states so it's unambiguous the
+     whole row is interactive in both themes. The Tailwind hover:bg-white/N
+     override layer covers most surfaces, but this widget specifically had
+     too-faint feedback in light mode for users to feel confident clicking. */
+  .health-row { background-color: transparent; }
+  [data-theme="light"] .health-row:hover  { background-color: #EFF6FF; }
+  [data-theme="light"] .health-row:active { background-color: #DBEAFE; }
+  [data-theme="dark"]  .health-row:hover  { background-color: rgba(255, 255, 255, 0.05); }
+  [data-theme="dark"]  .health-row:active { background-color: rgba(255, 255, 255, 0.10); }
+
   /* Reusable colored "icon tile" — the small rounded-square colored
      containers the reference uses next to stat numbers. */
   .icon-tile {

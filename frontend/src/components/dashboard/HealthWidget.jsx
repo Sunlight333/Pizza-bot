@@ -89,7 +89,8 @@ export default function HealthWidget() {
             setOpen((o) => !o)
           }
         }}
-        className="flex items-center justify-between p-4 cursor-pointer select-none transition-colors hover:bg-white/5 active:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+        style={{ WebkitTapHighlightColor: 'transparent' }}
+        className="health-row flex items-center justify-between p-4 cursor-pointer select-none transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
       >
         <div className="flex items-center gap-2.5 text-sm">
           <SummaryIcon summary={summary} />
