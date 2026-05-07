@@ -20,6 +20,7 @@ import {
   Check,
   Clock,
   Flame,
+  Lock,
   MapPin,
   MessageCircle,
   Phone,
@@ -326,11 +327,26 @@ function Nav() {
           <a href="#entrega" className="hover:text-[var(--ovenred)] transition-colors">Entrega</a>
         </nav>
 
-        <WhatsAppLink className="btn-whatsapp text-sm px-4 py-2.5">
-          <MessageCircle size={16} />
-          <span className="hidden sm:inline">Pedir pelo WhatsApp</span>
-          <span className="sm:hidden">Pedir</span>
-        </WhatsAppLink>
+        <div className="flex items-center gap-3 sm:gap-4">
+          {/* Staff entry — text-only link, deliberately quieter than the
+              WhatsApp CTA so customers focus on ordering. Hidden on the
+              smallest screens to leave room for the CTA; mobile users can
+              still reach /login from the footer or directly. */}
+          <Link
+            to="/login"
+            className="hidden sm:inline-flex items-center gap-1.5 text-sm font-medium transition-colors hover:text-[var(--ovenred)]"
+            style={{ color: 'var(--charcoal-soft)' }}
+          >
+            <Lock size={14} />
+            Acesso da equipe
+          </Link>
+
+          <WhatsAppLink className="btn-whatsapp text-sm px-4 py-2.5">
+            <MessageCircle size={16} />
+            <span className="hidden sm:inline">Pedir pelo WhatsApp</span>
+            <span className="sm:hidden">Pedir</span>
+          </WhatsAppLink>
+        </div>
       </div>
     </header>
   )
