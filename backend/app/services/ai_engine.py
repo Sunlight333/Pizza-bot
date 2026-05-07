@@ -5,9 +5,11 @@ The engine gets a turn from WhatsApp, renders the full context, calls OpenAI,
 executes any tool calls (add_to_cart, set_delivery_address, etc.), and returns
 a plain-text reply to send back.
 """
+import base64
 import json
 import logging
 from datetime import timezone
+from pathlib import Path
 from typing import Any, Optional
 
 from openai import AsyncOpenAI
@@ -196,6 +198,63 @@ TOOLS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_change_for",
+            "description": (
+                "Registra o valor de troco que o cliente vai precisar quando ele paga em "
+                "dinheiro. amount=0 significa que paga exato (sem troco). Chame ASSIM QUE "
+                "o cliente responder à pergunta sobre troco — antes de confirmar o pedido."
+            ),
+            "parameters": {
+                "type": "object",
+                "required": ["amount"],
+                "properties": {
+                    "amount": {
+                        "type": "number",
+                        "description": "Valor da nota com que o cliente vai pagar (R$). 0 = paga exato.",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_menu_image",
+            "description": (
+                "Envia a imagem do cardápio pro cliente pelo WhatsApp. Use quando ele pedir "
+                "pra ver o cardápio, opções, sabores, ou perguntar 'tem foto?'. Categorias: "
+                "'salgada' (pizzas salgadas), 'doce' (pizzas doces), 'sorvete' (sorvetes). "
+                "Se a imagem não estiver cadastrada, devolve um aviso pra você seguir em texto."
+            ),
+            "parameters": {
+                "type": "object",
+                "required": ["category"],
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "enum": ["salgada", "doce", "sorvete", "bebida"],
+                        "description": "Categoria do cardápio a enviar",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "request_location_pin",
+            "description": (
+                "Marca a conversa como aguardando o pin de localização do WhatsApp. "
+                "Chame quando o endereço dado pelo cliente for claramente zona rural (sítio, "
+                "fazenda, estrada, rodovia, km). Depois de chamar, peça pro cliente mandar "
+                "a localização atual pelo WhatsApp (📎 → Localização → Localização atual)."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
 ]
 
 
@@ -380,6 +439,25 @@ def _is_open_now(cfg, now_local) -> bool:
     return not closed_today and in_hours
 
 
+# Words that strongly suggest a rural address. We err on the side of false
+# positives — asking for a location pin in a borderline case is a tiny ask of
+# the customer; failing to ask in a real rural case means a lost delivery.
+_RURAL_KEYWORDS = (
+    "fazenda", "sítio", "sitio", "chácara", "chacara",
+    "estrada", "rodovia", "br-", "br ", "sp-", "sp ",
+    "zona rural", "área rural", "area rural", "rural",
+    "kilômetro", "kilometro", "quilômetro", "quilometro",
+    " km ", "km ", "assentamento", "linha ",
+)
+
+
+def _is_rural_address(addr_text: str) -> bool:
+    if not addr_text:
+        return False
+    low = f" {addr_text.lower()} "
+    return any(k in low for k in _RURAL_KEYWORDS)
+
+
 async def _build_system_prompt(db: AsyncSession, state: dict) -> str:
     cfg = await _get_bot_config(db)
     menu_text = await get_menu_for_bot(db)
@@ -511,6 +589,46 @@ REGRAS IMPORTANTES:
 - Antes de confirmar, mostre o resumo completo e peça confirmação explícita.
 - Se o cliente xingar, reclamar muito, ou pedir falar com outra pessoa, chame request_human_handoff.
 - Se o bairro não for atendido, avise que não entregamos lá e ofereça retirada.
+
+ADICIONAIS GRÁTIS (regra obrigatória após cada pizza adicionada):
+- Logo depois de adicionar uma pizza ao carrinho com SUCESSO, ofereça ESPONTANEAMENTE
+  os adicionais que estão GRÁTIS para aquela pizza (no cardápio acima eles aparecem
+  sem nenhum "(brotinho +R$ X)" entre parênteses — preço zero por padrão).
+- Cite no máximo 3 dos mais comuns (cebola, requeijão, orégano extra), em uma única
+  frase amigável e curta. Exemplo: "Quer cebola ou requeijão junto? São de cortesia 😊".
+- NÃO ofereça os adicionais PAGOS nessa hora — esses só se o cliente perguntar.
+- Se o cliente disser que não quer nenhum, siga normalmente para borda/endereço/etc.
+
+PAGAMENTO EM DINHEIRO (regra obrigatória):
+- Quando o cliente escolher dinheiro como forma de pagamento, ANTES de confirmar
+  o pedido pergunte: "Vai precisar de troco pra quanto?". Se o cliente responder
+  um valor (ex.: "100"), chame set_change_for(amount=100). Se o cliente disser
+  "não preciso de troco" ou "vou pagar exato", chame set_change_for(amount=0).
+- Sem essa pergunta o motoboy chega sem o troco e dá problema.
+
+ENDEREÇO EM ZONA RURAL (regra obrigatória):
+- Se o endereço dado pelo cliente claramente é zona rural (sítio, fazenda, estrada,
+  rodovia, "km", "zona rural", "área rural"), o número de rua não ajuda o motoboy.
+  O sistema detecta isso automaticamente e seta needs_location_pin=true no carrinho.
+- Quando needs_location_pin=true e o carrinho ainda NÃO tem delivery_lat/lng,
+  peça ao cliente: "Pra zona rural a gente precisa do ponto exato. Manda sua
+  localização aqui pelo próprio WhatsApp clicando no clipe 📎 → Localização →
+  Enviar localização atual.".
+- A localização chega como uma mensagem especial do WhatsApp e o sistema grava
+  delivery_lat/lng no carrinho automaticamente. Quando esses campos aparecerem,
+  agradeça brevemente ("Show, recebi! 📍") e siga normalmente para forma de pagamento.
+- Se o cliente insistir só em texto sem mandar o pin, aceite mas avise que a entrega
+  pode demorar mais porque o motoboy vai procurar pela referência.
+
+CARDÁPIO COM IMAGEM (quando o cliente pedir):
+- Se o cliente perguntar "tem cardápio?", "manda o cardápio", "quero ver as pizzas",
+  "quais sabores de sorvete", "qual o cardápio", chame send_menu_image com a categoria
+  apropriada ("salgada", "doce" ou "sorvete").
+- A imagem é enviada AUTOMATICAMENTE pelo WhatsApp; sua resposta de texto é apenas
+  uma frase curta tipo "Manda aí, ó: 👇" antes ou "Esses são nossos sabores 🍕"
+  depois — não precisa repetir o cardápio em texto.
+- Se a categoria solicitada não tiver imagem cadastrada, recue para o fluxo de texto
+  normal (sugerir 3-4 opções e perguntar o que o cliente quer).
 {cpf_rule}
 {repeat_rule}
 {pix_block}
@@ -521,6 +639,9 @@ CARRINHO:
 {cart_snapshot}
 ENDEREÇO: {addr or '—'}
 PAGAMENTO: {payment or '—'}
+TROCO PARA: {('R$ ' + format(float(cart.get('change_for') or 0), '.2f').replace('.', ',')) if cart.get('change_for') else '—'}
+LOCALIZAÇÃO ESPERADA (zona rural): {'sim' if cart.get('needs_location_pin') else 'não'}
+LOCALIZAÇÃO RECEBIDA: {('lat=' + str(cart.get('delivery_lat')) + ', lng=' + str(cart.get('delivery_lng'))) if cart.get('delivery_lat') is not None else '—'}
 
 CARDÁPIO (ativo):
 {menu_text}
@@ -583,6 +704,24 @@ async def _execute_tool_call(
             if args.get("reference"):
                 cart["observation"] = (cart.get("observation") or "") + f" Ref: {args['reference']}"
             state["state"] = "collecting_payment"
+
+            # If the address text smells rural, instruct GPT to also ask for
+            # the WhatsApp location pin BEFORE moving on to payment. The pin
+            # arrives as a special message handled by the webhook, which calls
+            # set_delivery_location automatically.
+            full_addr_text = " ".join(
+                str(args.get(k, "") or "")
+                for k in ("street", "neighborhood", "complement", "reference")
+            )
+            if _is_rural_address(full_addr_text):
+                cart["needs_location_pin"] = True
+                return (
+                    f"OK — endereço registrado (zona rural detectada). Taxa "
+                    f"R$ {zone['fee']:.2f}, ~{zone['estimated_minutes']}min. "
+                    "ATENÇÃO: peça pro cliente mandar a LOCALIZAÇÃO ATUAL pelo "
+                    "WhatsApp (📎 → Localização → Localização atual) antes de "
+                    "perguntar o pagamento. Use request_location_pin pra marcar."
+                )
             return (
                 f"OK — endereço registrado. Taxa de entrega R$ {zone['fee']:.2f}, "
                 f"tempo estimado ~{zone['estimated_minutes']}min. Agora pergunte forma de pagamento."
@@ -599,6 +738,13 @@ async def _execute_tool_call(
         if name == "set_payment_method":
             cart["payment_method"] = args["method"]
             state["state"] = "confirming"
+            if args["method"] == "cash":
+                # Nudge GPT to ask about change BEFORE letting it confirm.
+                return (
+                    "OK — pagamento: dinheiro. ANTES de confirmar, pergunte ao cliente "
+                    "'precisa de troco pra quanto?' e quando ele responder chame "
+                    "set_change_for. Só DEPOIS mostre o resumo e peça confirmação."
+                )
             return f"OK — pagamento: {args['method']}. Mostre o resumo e peça confirmação."
 
         if name == "confirm_order":
@@ -679,6 +825,79 @@ async def _execute_tool_call(
             return (
                 f"OK — registrada dúvida sobre {args.get('topic', '?')}. "
                 f"Faça a pergunta ao cliente: {args.get('question', '')}"
+            )
+
+        if name == "set_change_for":
+            try:
+                amount = float(args.get("amount") or 0)
+            except (TypeError, ValueError):
+                amount = 0.0
+            cart["change_for"] = round(max(0.0, amount), 2)
+            if amount > 0:
+                return (
+                    f"OK — registrado: troco para R$ {amount:.2f}. Agora mostre o "
+                    "resumo completo do pedido e peça confirmação."
+                )
+            return (
+                "OK — registrado: cliente paga exato (sem troco). Mostre o resumo "
+                "e peça confirmação."
+            )
+
+        if name == "send_menu_image":
+            cfg = await _get_bot_config(db)
+            menu_images = cfg.menu_images or {}
+            category = (args.get("category") or "").strip().lower()
+            url = menu_images.get(category)
+            if not url:
+                return (
+                    f"INDISPONÍVEL: não há imagem cadastrada para a categoria "
+                    f"'{category}'. Liste as opções em texto pro cliente, oferecendo "
+                    "3-4 sugestões e perguntando o que ele quer."
+                )
+            try:
+                # Stored URL is /media/products/<file>. Evolution needs an
+                # absolute, publicly reachable URL OR raw base64. We don't
+                # assume the backend is reachable from Evolution's host, so
+                # read the file off disk and ship base64.
+                media_payload: str
+                if url.startswith("/media/"):
+                    media_root = Path(__file__).resolve().parents[2] / "media"
+                    rel = url[len("/media/"):].lstrip("/")
+                    file_path = (media_root / rel).resolve()
+                    if not str(file_path).startswith(str(media_root.resolve())):
+                        raise ValueError("invalid menu image path")
+                    if not file_path.is_file():
+                        raise FileNotFoundError(f"menu image missing on disk: {url}")
+                    media_payload = base64.b64encode(file_path.read_bytes()).decode("ascii")
+                else:
+                    # Already-absolute URL stored by some other flow — pass through.
+                    media_payload = url
+                from app.services.whatsapp import client as wa
+                await wa.send_media(
+                    phone=phone,
+                    media_base64_or_url=media_payload,
+                    media_type="image",
+                )
+                return (
+                    f"OK — imagem do cardápio '{category}' enviada pelo WhatsApp. "
+                    "Mande SÓ uma frase curta pro cliente (ex: 'Manda aí, ó 👇' "
+                    "ou 'Esses são nossos sabores 🍕'); não repita o cardápio em texto."
+                )
+            except Exception as e:
+                log.exception("send_menu_image failed")
+                return (
+                    f"FALHA: não consegui enviar a imagem ({e}). Continue em texto: "
+                    "liste 3-4 sugestões da categoria e pergunte o que o cliente quer."
+                )
+
+        if name == "request_location_pin":
+            cart["needs_location_pin"] = True
+            return (
+                "OK — marcado que aguardamos localização. Peça pro cliente: "
+                "'Manda sua localização atual aqui pelo WhatsApp clicando no clipe "
+                "📎 → Localização → Enviar localização atual'. Quando ela chegar, o "
+                "sistema chama set_delivery_location automaticamente — você só "
+                "confirma com o cliente que recebeu."
             )
 
         return f"ferramenta desconhecida: {name}"

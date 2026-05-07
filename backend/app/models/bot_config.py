@@ -75,3 +75,10 @@ class BotConfig(Base, TimestampMixin):
     # Daily input+output token budget (0 disables). When exceeded, the bot
     # short-circuits to handoff so spend can't run away on a quiet weekend.
     daily_token_budget: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # --- Menu images sent via WhatsApp ---
+    # Map of category key (e.g. "salgada", "doce", "sorvete", "bebida") to a
+    # publicly fetchable image URL. Operator uploads via the admin upload
+    # endpoint; the bot calls send_menu_image when a customer asks for the menu.
+    # Empty/missing key = bot falls back to text suggestions for that category.
+    menu_images: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)

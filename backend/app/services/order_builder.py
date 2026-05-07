@@ -156,6 +156,27 @@ async def finalize(
         raise ValueError("Forma de pagamento não definida")
     pm = PaymentMethod(payment)
 
+    # Stitch operational notes into observation so the cashier and the
+    # motoboy see them on the printed ticket.
+    obs = (cart.get("observation") or "").strip()
+    notes: list[str] = []
+    change_for = cart.get("change_for")
+    if pm == PaymentMethod.cash and change_for is not None:
+        try:
+            cf = float(change_for)
+        except (TypeError, ValueError):
+            cf = 0.0
+        notes.append(
+            f"Troco para R$ {cf:.2f}".replace(".", ",")
+            if cf > 0 else "Paga exato (sem troco)"
+        )
+    lat = cart.get("delivery_lat")
+    lng = cart.get("delivery_lng")
+    if lat is not None and lng is not None:
+        notes.append(f"GPS: {lat}, {lng}")
+    if notes:
+        obs = (obs + " | " if obs else "") + " | ".join(notes)
+
     order = await order_service.create_order(
         db,
         customer_phone=phone,
@@ -166,8 +187,10 @@ async def finalize(
         delivery_neighborhood=cart.get("delivery_neighborhood"),
         delivery_fee=float(cart.get("delivery_fee", 0) or 0),
         payment_method=pm,
-        observation=cart.get("observation"),
+        observation=obs or None,
         scheduled_for=scheduled_for,
+        delivery_lat=lat,
+        delivery_lng=lng,
     )
 
     from app.services.websocket import manager

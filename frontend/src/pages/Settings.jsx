@@ -3,6 +3,7 @@ import BotPersonality from '@/components/settings/BotPersonality'
 import BotSimulator from '@/components/settings/BotSimulator'
 import DatacaixaSync from '@/components/settings/DatacaixaSync'
 import EvolutionConfig from '@/components/settings/EvolutionConfig'
+import MenuImages from '@/components/settings/MenuImages'
 
 export default function Settings() {
   return (
@@ -15,6 +16,7 @@ export default function Settings() {
         <BotPersonality />
         <BotSimulator />
       </div>
+      <MenuImages />
     </AnimatedPage>
   )
 }

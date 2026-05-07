@@ -46,6 +46,8 @@ async def create_order(
     payment_method: PaymentMethod,
     observation: str | None,
     scheduled_for: datetime | None = None,
+    delivery_lat: float | None = None,
+    delivery_lng: float | None = None,
 ) -> Order:
     items_list = [dict(i) for i in items_data]
     if not items_list:
@@ -73,6 +75,8 @@ async def create_order(
         payment_code=PAYMENT_CODE_MAP[payment_method],
         delivery_address=delivery_address,
         delivery_neighborhood=delivery_neighborhood,
+        delivery_lat=delivery_lat,
+        delivery_lng=delivery_lng,
         customer_phone=customer_phone,
         observation=observation,
         scheduled_for=scheduled_for,

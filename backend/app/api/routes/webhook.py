@@ -44,6 +44,25 @@ def _extract_audio_id(data: dict) -> Optional[str]:
     return None
 
 
+def _extract_location(data: dict) -> Optional[tuple[float, float]]:
+    """Pull (lat, lng) from a WhatsApp shared-location message, if present.
+
+    Evolution forwards both static pins (`locationMessage`) and live shares
+    (`liveLocationMessage`). Both shapes carry degreesLatitude/degreesLongitude.
+    """
+    msg = data.get("message") or {}
+    for key in ("locationMessage", "liveLocationMessage"):
+        loc = msg.get(key)
+        if loc:
+            try:
+                lat = float(loc.get("degreesLatitude"))
+                lng = float(loc.get("degreesLongitude"))
+                return lat, lng
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
 def _verify_signature(raw_body: bytes, header_signature: Optional[str]) -> bool:
     """
     Verify HMAC-SHA256 of the raw body against EVOLUTION_WEBHOOK_SECRET.
@@ -76,6 +95,7 @@ async def _process(event: dict) -> None:
 
     text = _extract_text(data)
     audio_id = _extract_audio_id(data)
+    location = _extract_location(data)
 
     if audio_id and not text:
         audio_bytes = await wa_client.download_media(audio_id)
@@ -87,6 +107,27 @@ async def _process(event: dict) -> None:
                 "Desculpa, não consegui entender o áudio. Pode escrever ou mandar de novo?",
             )
             return
+
+    # Location pin: write coords directly into the conversation cart, then
+    # feed a synthetic turn to the bot so it can confirm with the customer
+    # and continue the order. The bot's system prompt already covers the
+    # "needs_location_pin" + "delivery_lat" branches.
+    if location is not None:
+        lat, lng = location
+        from app.services import conversation_state as state_svc
+        state = await state_svc.get_state(phone)
+        cart = state.setdefault("cart", {"items": []})
+        cart["delivery_lat"] = lat
+        cart["delivery_lng"] = lng
+        # Once we have the pin we no longer need to ask for it.
+        cart["needs_location_pin"] = False
+        await state_svc.set_state(phone, state)
+        synthetic = f"[LOCALIZAÇÃO COMPARTILHADA: lat={lat}, lng={lng}]"
+        async with AsyncSessionLocal() as db:
+            reply = await process_incoming(db, phone=phone, text=synthetic)
+        if reply:
+            await wa_client.send_text(phone, reply)
+        return
 
     if not text:
         return

@@ -45,6 +45,8 @@ def _serialize_order(order: Order) -> dict:
         "payment_code": order.payment_code,
         "delivery_address": order.delivery_address,
         "delivery_neighborhood": order.delivery_neighborhood,
+        "delivery_lat": float(order.delivery_lat) if order.delivery_lat is not None else None,
+        "delivery_lng": float(order.delivery_lng) if order.delivery_lng is not None else None,
         "observation": order.observation,
         "datacaixa_synced": order.datacaixa_synced,
         "datacaixa_file": order.datacaixa_file,

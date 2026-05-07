@@ -64,6 +64,10 @@ class Order(Base, TimestampMixin):
 
     delivery_address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     delivery_neighborhood: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    # GPS pin shared via WhatsApp's "send location" — populated for rural orders.
+    # Null when the customer didn't share a pin (urban orders, the common case).
+    delivery_lat: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)
+    delivery_lng: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)
     customer_phone: Mapped[str] = mapped_column(String(32), nullable=False)
 
     observation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

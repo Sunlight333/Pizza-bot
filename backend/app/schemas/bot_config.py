@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -33,6 +33,8 @@ class BotConfigBase(BaseModel):
     fiscal_emission_mode: FiscalEmissionMode = "manual"
     privacy_notice: Optional[str] = None
     daily_token_budget: int = Field(0, ge=0)
+    # Map of category key ("salgada"|"doce"|"sorvete"|"bebida") -> image URL
+    menu_images: Dict[str, str] = Field(default_factory=dict)
 
 
 class BotConfigUpdate(BaseModel):
@@ -61,6 +63,7 @@ class BotConfigUpdate(BaseModel):
     fiscal_emission_mode: Optional[FiscalEmissionMode] = None
     privacy_notice: Optional[str] = None
     daily_token_budget: Optional[int] = Field(default=None, ge=0)
+    menu_images: Optional[Dict[str, str]] = None
 
 
 class BotConfigOut(BotConfigBase):
