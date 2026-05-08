@@ -8,14 +8,39 @@ from app.models.customer import Customer
 from app.models.order import Order, OrderStatus
 
 
-async def find_or_create_by_phone(db: AsyncSession, phone: str) -> Customer:
+async def find_or_create_by_phone(
+    db: AsyncSession,
+    phone: str,
+    *,
+    push_name: Optional[str] = None,
+) -> Customer:
+    """Find an existing customer or create a new one for the phone/JID.
+
+    `push_name` is the WhatsApp display name from the incoming message.
+    For anonymised LID contacts (where we never get a real phone number)
+    this is the only human-readable label we can show in the panel; we
+    write it to `name` when the customer hasn't set it themselves.
+    """
     phone = phone.strip()
     existing = (
         await db.execute(select(Customer).where(Customer.phone == phone))
     ).scalar_one_or_none()
     if existing:
+        # Backfill name from pushName if we never had one — useful when the
+        # row was created before pushName capture landed, or for LID
+        # contacts where pushName is the only label we have.
+        if push_name and not existing.name:
+            existing.name = push_name.strip()[:120]
+            await db.commit()
+            await db.refresh(existing)
         return existing
-    c = Customer(phone=phone, addresses=[], default_address_index=0, total_orders=0)
+    c = Customer(
+        phone=phone,
+        name=(push_name.strip()[:120] if push_name else None),
+        addresses=[],
+        default_address_index=0,
+        total_orders=0,
+    )
     db.add(c)
     await db.commit()
     await db.refresh(c)

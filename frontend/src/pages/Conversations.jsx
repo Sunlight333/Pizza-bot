@@ -7,6 +7,15 @@ import ChatViewer from '@/components/conversations/ChatViewer'
 import HumanTakeover from '@/components/conversations/HumanTakeover'
 import { conversationsApi } from '@/services/conversations'
 
+const isLid = (s) => typeof s === 'string' && s.endsWith('@lid')
+const friendlyPhone = (phone) => {
+  if (!phone) return ''
+  if (!isLid(phone)) return phone
+  const id = phone.slice(0, -4)
+  const tail = id.length > 6 ? id.slice(-6) : id
+  return `Anônimo · #${tail}`
+}
+
 export default function Conversations() {
   const [selected, setSelected] = useState(null)
 
@@ -33,8 +42,14 @@ export default function Conversations() {
         <div className="glass-card flex flex-col overflow-hidden">
           <div className="px-4 py-3 border-b border-glass-border flex items-center justify-between">
             <div>
-              <div className="font-display">{current?.customer_name || selected || 'Conversa'}</div>
-              {selected && <div className="text-xs text-white/50">{selected}</div>}
+              <div className="font-display">
+                {current?.customer_name || friendlyPhone(selected) || 'Conversa'}
+              </div>
+              {selected && (
+                <div className="text-xs text-white/50">
+                  {isLid(selected) ? 'WhatsApp anônimo (privacidade do nº ativada)' : selected}
+                </div>
+              )}
             </div>
             {current && (
               <span className="text-xs text-white/50">

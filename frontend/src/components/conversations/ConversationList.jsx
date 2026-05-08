@@ -14,6 +14,18 @@ const relTime = (iso) => {
   return new Date(iso).toLocaleDateString('pt-BR')
 }
 
+// WhatsApp's privacy protocol now routes 1:1 chats with `<id>@lid` JIDs and
+// hides the real phone number. Show the LID contact in a friendlier shape:
+// last 6 digits of the LID + a tag, instead of the raw `<long>@lid` string.
+const isLid = (s) => typeof s === 'string' && s.endsWith('@lid')
+const friendlyPhone = (phone) => {
+  if (!phone) return ''
+  if (!isLid(phone)) return phone
+  const id = phone.slice(0, -4)         // strip "@lid"
+  const tail = id.length > 6 ? id.slice(-6) : id
+  return `Anônimo · #${tail}`
+}
+
 export default function ConversationList({ selectedPhone, onSelect }) {
   const { data: active = [], isLoading } = useQuery({
     queryKey: ['conv-active'],
@@ -66,7 +78,7 @@ export default function ConversationList({ selectedPhone, onSelect }) {
                         title={c.is_human_takeover ? 'Atendimento humano' : 'WhatsApp / bot'}
                       />
                       <div className="font-medium text-sm truncate">
-                        {c.customer_name || c.phone}
+                        {c.customer_name || friendlyPhone(c.phone)}
                       </div>
                     </div>
                     <span className="text-[10px] text-white/40 flex items-center gap-0.5 shrink-0">
@@ -102,7 +114,7 @@ export default function ConversationList({ selectedPhone, onSelect }) {
                   selectedPhone === r.phone ? 'bg-primary/10' : 'hover:bg-white/5'
                 }`}
               >
-                <span className="text-white/60 truncate">{r.phone}</span>
+                <span className="text-white/60 truncate">{friendlyPhone(r.phone)}</span>
                 <span className="text-white/30">{relTime(r.last)}</span>
               </button>
             ))}

@@ -20,6 +20,17 @@ const initials = (s) =>
     .map((x) => x[0].toUpperCase())
     .join('')
 
+// Modern WhatsApp routes 1:1 chats with `<id>@lid` JIDs (privacy protocol);
+// the real phone is never delivered, so the LID is all we have. Render it
+// as "Anônimo · #<last6>" instead of the raw `…@lid` string.
+const friendlyPhone = (phone) => {
+  if (!phone) return ''
+  if (typeof phone !== 'string' || !phone.endsWith('@lid')) return phone
+  const id = phone.slice(0, -4)
+  const tail = id.length > 6 ? id.slice(-6) : id
+  return `Anônimo · #${tail}`
+}
+
 function CustomerProfile({ customerId, onClose }) {
   const { data: customer, isLoading } = useQuery({
     queryKey: ['customer', customerId],
@@ -73,7 +84,7 @@ function CustomerProfile({ customerId, onClose }) {
                     )}
                     <div>
                       <h2 className="font-display text-xl">{customer.name || 'Sem nome'}</h2>
-                      <p className="text-white/60 text-sm">{customer.phone}</p>
+                      <p className="text-white/60 text-sm">{friendlyPhone(customer.phone)}</p>
                       {customer.cpf && <p className="text-white/40 text-xs mt-0.5">CPF: {customer.cpf}</p>}
                     </div>
                   </div>
@@ -206,7 +217,7 @@ export default function Customers() {
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{c.name || 'Sem nome'}</div>
                   <div className="text-xs text-white/50 truncate flex items-center gap-1">
-                    <Phone size={10} /> {c.phone}
+                    <Phone size={10} /> {friendlyPhone(c.phone)}
                   </div>
                 </div>
               </div>

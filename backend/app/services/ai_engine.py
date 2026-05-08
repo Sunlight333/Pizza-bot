@@ -948,6 +948,7 @@ async def process_incoming(
     is_audio: bool = False,
     media_url: Optional[str] = None,
     media_type: Optional[str] = None,
+    push_name: Optional[str] = None,
 ) -> Optional[str]:
     """
     Main entry — process a single incoming message and return a reply string (or None if
@@ -970,7 +971,9 @@ async def process_incoming(
         return None
 
     # Lazy ensure customer row + pull returning-customer context
-    customer = await customer_service.find_or_create_by_phone(db, phone)
+    customer = await customer_service.find_or_create_by_phone(
+        db, phone, push_name=push_name,
+    )
     state["customer_id"] = customer.id
     if customer.name and not state.get("customer_name"):
         state["customer_name"] = customer.name

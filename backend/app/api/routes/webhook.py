@@ -241,6 +241,7 @@ async def _process(event: dict) -> None:
     if not text:
         return
 
+    push_name = (data.get("pushName") or "").strip() or None
     async with AsyncSessionLocal() as db:
         reply = await process_incoming(
             db,
@@ -249,6 +250,7 @@ async def _process(event: dict) -> None:
             is_audio=bool(audio_id),
             media_url=media_url,
             media_type=media_type,
+            push_name=push_name,
         )
     if reply:
         await wa_client.send_text(phone, reply)
