@@ -473,14 +473,28 @@ async def _build_system_prompt(db: AsyncSession, state: dict) -> str:
     menu_text = await get_menu_for_bot(db)
     zones_text = await delivery_svc.get_all_zones_formatted(db)
 
-    # Cart snapshot
+    # Cart snapshot — itemised lines + the deterministic subtotal / fee /
+    # total. GPT must mirror these numbers; recomputing is forbidden in
+    # the directives below. Without the totals here, GPT used to guess
+    # and ended up showing R$ 105 in the resumo, then R$ 125 at confirm
+    # — undermining customer trust.
     cart = state.get("cart", {"items": []})
     items = cart.get("items", [])
     if items:
         cart_lines = []
         for i, it in enumerate(items, 1):
-            total = float(it["unit_price"]) * int(it.get("quantity", 1))
-            cart_lines.append(f"  {i}. {it['quantity']}× {it['description']} — R$ {total:.2f}".replace(".", ","))
+            line_total = float(it["unit_price"]) * int(it.get("quantity", 1))
+            cart_lines.append(
+                f"  {i}. {it['quantity']}× {it['description']} — R$ {line_total:.2f}".replace(".", ",")
+            )
+        subtotal, fee, total = order_builder.cart_totals(cart)
+        cart_lines.append("")
+        cart_lines.append(f"  Subtotal: R$ {subtotal:.2f}".replace(".", ","))
+        if fee:
+            cart_lines.append(f"  Taxa de entrega: R$ {fee:.2f}".replace(".", ","))
+        else:
+            cart_lines.append("  Taxa de entrega: — (retirada ou ainda sem endereço)")
+        cart_lines.append(f"  TOTAL FECHADO: R$ {total:.2f}".replace(".", ","))
         cart_snapshot = "\n".join(cart_lines)
     else:
         cart_snapshot = "  (vazio)"
@@ -599,6 +613,58 @@ REGRAS IMPORTANTES:
 - Antes de confirmar, mostre o resumo completo e peça confirmação explícita.
 - Se o cliente xingar, reclamar muito, ou pedir falar com outra pessoa, chame request_human_handoff.
 - Se o bairro não for atendido, avise que não entregamos lá e ofereça retirada.
+
+RESUMO E TOTAL — REGRA ABSOLUTA (não quebre por nada):
+- O bloco CARRINHO acima já traz os números EXATOS calculados pelo sistema
+  (subtotal, taxa de entrega, TOTAL FECHADO). Use esses valores LITERALMENTE
+  na sua resposta — nunca recalcule, nunca arredonde, nunca invente.
+
+- O TOTAL FECHADO NÃO PODE MUDAR entre o resumo e a confirmação. Se você
+  mostrou R$ 105,00 no resumo, o cliente vai confirmar pra fechar em
+  R$ 105,00. Cobrar valor diferente depois quebra a confiança e o cliente
+  cancela. Se algo mudar de fato (cliente pediu mais um item, mudou
+  borda, mudou endereço), monte um NOVO resumo e peça nova confirmação
+  ANTES de chamar confirm_order.
+
+- Quando esclarecimentos não mudam o pedido (ex: cliente disse "cartão"
+  e você precisa saber se é crédito ou débito), apenas chame
+  set_payment_method com o valor correto e responda CONFIRMANDO o mesmo
+  total já mostrado, sem recalcular nem mostrar resumo de novo. Exemplo:
+  "Show, cartão de crédito anotado. Total continua R$ 105,00, posso
+  confirmar?".
+
+- O resumo final que você manda pro cliente DEVE ser detalhado, item por
+  item, com preço unitário e total da linha, depois subtotal, taxa de
+  entrega (separada), e TOTAL no final em destaque. Nunca mostre só o
+  total acumulado.
+
+  Modelo do resumo (adapte o tom mas mantenha a estrutura):
+
+      Tá quase saindo, dá uma conferida 😊
+
+      • 1× Pizza Grande meia Calabresa Super / meia Chocolate
+        com cebola e requeijão (cortesia), borda de cheddar — R$ 84,00
+      • 1× Coca-Cola 2L — R$ 14,00
+
+      Subtotal: R$ 98,00
+      Taxa de entrega (Eldorado): R$ 7,00
+      *Total: R$ 105,00*
+
+      Endereço: Av Tanabi, 3690 — Eldorado (casa de esquina com Av Valentin Gentil)
+      Pagamento: cartão na entrega
+
+      Posso confirmar?
+
+  Se faltar algum dado (endereço, pagamento), pergunte ANTES de mostrar
+  o resumo final — o resumo só sai quando o pedido está pronto pra fechar.
+
+- Cobrar a borda recheada / adicional pago: o sistema já adiciona o
+  preço dela ao item no momento do add_pizza_to_cart. NUNCA some um
+  valor "extra de borda" por fora — o TOTAL FECHADO já contempla.
+
+- Cobrar entrega: o sistema seta cart.delivery_fee quando o endereço é
+  registrado em set_delivery_address. Use o número do bloco CARRINHO
+  acima (Taxa de entrega), não invente nem some por fora.
 
 ATENDIMENTO RÁPIDO (regra de ouro — minimize perguntas, maximize captura):
 - O cliente está com fome e com pressa. SEMPRE que possível, capture várias
