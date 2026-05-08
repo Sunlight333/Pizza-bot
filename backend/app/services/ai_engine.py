@@ -224,10 +224,16 @@ TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "send_menu_image",
             "description": (
-                "Envia a imagem do cardápio pro cliente pelo WhatsApp. Use quando ele pedir "
-                "pra ver o cardápio, opções, sabores, ou perguntar 'tem foto?'. Categorias: "
-                "'salgada' (pizzas salgadas), 'doce' (pizzas doces), 'sorvete' (sorvetes). "
-                "Se a imagem não estiver cadastrada, devolve um aviso pra você seguir em texto."
+                "OBRIGATÓRIO chamar SEMPRE que o cliente sinalizar que quer ver o cardápio, "
+                "menu, sabores, opções, ou as pizzas — em qualquer idioma e qualquer "
+                "fraseado, direto ou indireto. Exemplos de gatilhos: 'manda o cardápio', "
+                "'tem menu?', 'quais sabores?', 'que pizzas vocês têm?', 'vamos começar "
+                "pelo menu', 'show me menu', 'me mostra as opções', 'queria ver as pizzas'. "
+                "Se o cliente não especificar a categoria, use 'salgada' (default). Esta "
+                "função envia a imagem REAL pelo WhatsApp; NUNCA escreva 'vou te mandar o "
+                "cardápio' sem chamar esta função no mesmo turno — o cliente não receberia "
+                "a imagem. Categorias: 'salgada' (pizzas salgadas), 'doce' (pizzas doces), "
+                "'sorvete' (sorvetes), 'bebida' (bebidas)."
             ),
             "parameters": {
                 "type": "object",
@@ -680,15 +686,42 @@ ENDEREÇO EM ZONA RURAL (regra obrigatória):
 - Se o cliente insistir só em texto sem mandar o pin, aceite mas avise que a entrega
   pode demorar mais porque o motoboy vai procurar pela referência.
 
-CARDÁPIO COM IMAGEM (quando o cliente pedir):
-- Se o cliente perguntar "tem cardápio?", "manda o cardápio", "quero ver as pizzas",
-  "quais sabores de sorvete", "qual o cardápio", chame send_menu_image com a categoria
-  apropriada ("salgada", "doce" ou "sorvete").
-- A imagem é enviada AUTOMATICAMENTE pelo WhatsApp; sua resposta de texto é apenas
-  uma frase curta tipo "Manda aí, ó: 👇" antes ou "Esses são nossos sabores 🍕"
-  depois — não precisa repetir o cardápio em texto.
-- Se a categoria solicitada não tiver imagem cadastrada, recue para o fluxo de texto
-  normal (sugerir 3-4 opções e perguntar o que o cliente quer).
+CARDÁPIO COM IMAGEM (REGRA DURA — não falhe nessa):
+- SEMPRE que o cliente sinalizar que quer ver o cardápio / o menu / os sabores /
+  as opções, você OBRIGATORIAMENTE precisa CHAMAR a função send_menu_image
+  ANTES de mandar qualquer texto. Não basta escrever "vou te mandar o cardápio",
+  você TEM que executar a tool — escrever a frase sem chamar a tool faz o
+  cliente NÃO receber a imagem e quebra a confiança.
+
+- Disparadores (lista NÃO exaustiva — interprete pelo sentido, não literalmente):
+    * "manda o cardápio", "manda o menu", "envia o menu", "manda as opções"
+    * "tem cardápio?", "qual o cardápio?", "que sabores tem?", "quais sabores?"
+    * "quero ver as pizzas", "quero ver o menu", "vamos começar pelo menu",
+      "começa pelo menu", "começar pelo cardápio"
+    * "show me menu", "send menu", "menu por favor" (cliente pode escrever em
+      qualquer língua — interprete o sentido)
+    * Qualquer frase que peça PRA VER as opções, mesmo indireta (ex.: "o que
+      vocês têm?", "me mostra os sabores")
+
+- COMO ESCOLHER A CATEGORIA:
+    * pizza salgada → category="salgada"
+    * pizza doce → category="doce"
+    * sorvete → category="sorvete"
+    * bebida → category="bebida"
+    * Se o cliente não especificar, ASSUMA "salgada" (pizza salgada é o
+      cardápio principal). Não pergunte; chame direto e ofereça os outros depois.
+
+- DEPOIS de chamar send_menu_image com sucesso, mande UMA frase curta no chat:
+  "Manda aí, ó 👇" / "Esses são nossos sabores 🍕" / "Tá aí 👆" — NUNCA repita
+  o cardápio em texto. NUNCA escreva "vou te mandar o cardápio" antes da tool;
+  só escreva DEPOIS que a tool retornou OK.
+
+- Se send_menu_image retornar INDISPONÍVEL (categoria sem imagem), aí sim
+  recue para texto: liste 3-4 opções da categoria e pergunte o que o cliente
+  quer. Não fale que enviaria imagem.
+
+- Se send_menu_image retornar FALHA (erro técnico), peça desculpas e liste
+  3-4 opções em texto; NÃO repita a tentativa.
 {cpf_rule}
 {repeat_rule}
 {pix_block}
