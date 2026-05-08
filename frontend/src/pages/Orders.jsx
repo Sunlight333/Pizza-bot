@@ -9,6 +9,7 @@ import OrderTimeline from '@/components/orders/OrderTimeline'
 import { SkeletonCard } from '@/components/ui/Skeleton'
 import { ordersApi, ORDER_STATUS, NEXT_STATUS } from '@/services/orders'
 import { useLiveOrders } from '@/hooks/useLiveOrders'
+import { displayName, friendlyPhone } from '@/utils/customer'
 
 // Tiny in-memory chime via Web Audio — no asset, no file
 function playChime() {
@@ -108,7 +109,14 @@ function OrderDetail({ orderId, onClose }) {
 
                 <div>
                   <h4 className="text-xs text-white/50 uppercase mb-2">Cliente</h4>
-                  <p className="text-sm">{order.customer_phone}</p>
+                  <p className="text-sm">
+                    {displayName(order.customer_name, order.customer_phone)}
+                  </p>
+                  {order.customer_name && (
+                    <p className="text-xs text-white/40 mt-0.5">
+                      {friendlyPhone(order.customer_phone)}
+                    </p>
+                  )}
                   {order.delivery_address && (
                     <p className="text-sm text-white/70 mt-1">
                       {order.delivery_address}
@@ -256,7 +264,9 @@ export default function Orders() {
                   <div className="text-sm truncate">
                     {o.items.length} ite{o.items.length === 1 ? 'm' : 'ns'}
                     <span className="text-white/40"> · </span>
-                    <span className="text-white/60">{o.customer_phone}</span>
+                    <span className="text-white/60">
+                      {displayName(o.customer_name, o.customer_phone)}
+                    </span>
                   </div>
                   <div className="text-xs text-white/40 truncate mt-0.5">
                     {o.items[0]?.description}{o.items.length > 1 && ` +${o.items.length - 1}`}

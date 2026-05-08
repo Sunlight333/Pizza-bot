@@ -37,6 +37,10 @@ def _serialize_order(order: Order) -> dict:
         "order_number": order.order_number,
         "customer_id": order.customer_id,
         "customer_phone": order.customer_phone,
+        # Customer.name carries the WhatsApp pushName (or whatever the operator
+        # set). The Order.customer relationship is lazy="joined", so this
+        # never costs an extra query.
+        "customer_name": (order.customer.name if order.customer else None),
         "status": order.status.value,
         "subtotal": float(order.subtotal),
         "delivery_fee": float(order.delivery_fee),
@@ -297,6 +301,7 @@ async def list_pending_fiscal(db: AsyncSession = Depends(get_db)):
             "order_number": o.order_number,
             "total": float(o.total),
             "customer_phone": o.customer_phone,
+            "customer_name": (o.customer.name if o.customer else None),
             "datacaixa_file": o.datacaixa_file,
             "created_at": o.created_at.isoformat(),
         })

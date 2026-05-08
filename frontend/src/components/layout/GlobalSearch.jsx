@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { menuApi } from '@/services/menu'
 import { customersApi } from '@/services/customers'
 import { ordersApi } from '@/services/orders'
+import { displayName, friendlyPhone } from '@/utils/customer'
 
 /**
  * Header global search. Debounces input ~300ms, queries products/customers/
@@ -138,8 +139,8 @@ export default function GlobalSearch() {
               {customers.slice(0, 4).map((c) => (
                 <Row
                   key={`c-${c.id}`}
-                  title={c.name || c.phone}
-                  subtitle={c.phone}
+                  title={displayName(c.name, c.phone)}
+                  subtitle={friendlyPhone(c.phone)}
                   onClick={() => goto('/customers')}
                 />
               ))}
@@ -152,7 +153,7 @@ export default function GlobalSearch() {
                 <Row
                   key={`o-${o.id}`}
                   title={`Pedido #${String(o.order_number).padStart(3, '0')}`}
-                  subtitle={`${o.customer_phone} — R$ ${Number(o.total).toFixed(2).replace('.', ',')}`}
+                  subtitle={`${displayName(o.customer_name, o.customer_phone)} — R$ ${Number(o.total).toFixed(2).replace('.', ',')}`}
                   onClick={() => goto('/orders')}
                 />
               ))}

@@ -6,15 +6,7 @@ import ConversationList from '@/components/conversations/ConversationList'
 import ChatViewer from '@/components/conversations/ChatViewer'
 import HumanTakeover from '@/components/conversations/HumanTakeover'
 import { conversationsApi } from '@/services/conversations'
-
-const isLid = (s) => typeof s === 'string' && s.endsWith('@lid')
-const friendlyPhone = (phone) => {
-  if (!phone) return ''
-  if (!isLid(phone)) return phone
-  const id = phone.slice(0, -4)
-  const tail = id.length > 6 ? id.slice(-6) : id
-  return `Anônimo · #${tail}`
-}
+import { friendlyPhone, isAnonymousPhone } from '@/utils/customer'
 
 export default function Conversations() {
   const [selected, setSelected] = useState(null)
@@ -47,7 +39,7 @@ export default function Conversations() {
               </div>
               {selected && (
                 <div className="text-xs text-white/50">
-                  {isLid(selected) ? 'WhatsApp anônimo (privacidade do nº ativada)' : selected}
+                  {isAnonymousPhone(selected) ? 'WhatsApp anônimo (privacidade do nº ativada)' : selected}
                 </div>
               )}
             </div>

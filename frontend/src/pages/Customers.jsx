@@ -8,6 +8,7 @@ import CountUp from '@/components/ui/CountUp'
 import { SkeletonCard } from '@/components/ui/Skeleton'
 import { customersApi } from '@/services/customers'
 import { ASSETS } from '@/utils/assets'
+import { friendlyPhone } from '@/utils/customer'
 
 const brl = (n) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0)
@@ -20,16 +21,7 @@ const initials = (s) =>
     .map((x) => x[0].toUpperCase())
     .join('')
 
-// Modern WhatsApp routes 1:1 chats with `<id>@lid` JIDs (privacy protocol);
-// the real phone is never delivered, so the LID is all we have. Render it
-// as "Anônimo · #<last6>" instead of the raw `…@lid` string.
-const friendlyPhone = (phone) => {
-  if (!phone) return ''
-  if (typeof phone !== 'string' || !phone.endsWith('@lid')) return phone
-  const id = phone.slice(0, -4)
-  const tail = id.length > 6 ? id.slice(-6) : id
-  return `Anônimo · #${tail}`
-}
+// LID-aware phone formatting lives in @/utils/customer.
 
 function CustomerProfile({ customerId, onClose }) {
   const { data: customer, isLoading } = useQuery({

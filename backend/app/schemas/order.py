@@ -43,6 +43,7 @@ class OrderOut(BaseModel):
     order_number: int
     customer_id: int
     customer_phone: str
+    customer_name: Optional[str] = None
     status: OrderStatus
     subtotal: float
     delivery_fee: float

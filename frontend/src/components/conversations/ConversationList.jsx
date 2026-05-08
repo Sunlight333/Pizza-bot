@@ -4,6 +4,7 @@ import { MessageCircle, Clock, ShoppingBag } from 'lucide-react'
 
 import { conversationsApi, STATE_LABEL } from '@/services/conversations'
 import { ASSETS } from '@/utils/assets'
+import { friendlyPhone } from '@/utils/customer'
 
 const relTime = (iso) => {
   if (!iso) return ''
@@ -14,17 +15,9 @@ const relTime = (iso) => {
   return new Date(iso).toLocaleDateString('pt-BR')
 }
 
-// WhatsApp's privacy protocol now routes 1:1 chats with `<id>@lid` JIDs and
-// hides the real phone number. Show the LID contact in a friendlier shape:
-// last 6 digits of the LID + a tag, instead of the raw `<long>@lid` string.
-const isLid = (s) => typeof s === 'string' && s.endsWith('@lid')
-const friendlyPhone = (phone) => {
-  if (!phone) return ''
-  if (!isLid(phone)) return phone
-  const id = phone.slice(0, -4)         // strip "@lid"
-  const tail = id.length > 6 ? id.slice(-6) : id
-  return `Anônimo · #${tail}`
-}
+// LID-aware phone formatting lives in @/utils/customer so every surface
+// (this list, the chat header, customers grid, orders, live feed, search)
+// renders identical labels.
 
 export default function ConversationList({ selectedPhone, onSelect }) {
   const { data: active = [], isLoading } = useQuery({

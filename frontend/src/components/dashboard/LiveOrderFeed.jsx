@@ -4,6 +4,7 @@ import { Activity } from 'lucide-react'
 
 import { ordersApi, ORDER_STATUS } from '@/services/orders'
 import PizzaSpinner from '@/components/ui/PizzaSpinner'
+import { displayName } from '@/utils/customer'
 
 const brl = (n) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0)
@@ -47,7 +48,9 @@ export default function LiveOrderFeed({ limit = 8 }) {
                   <div className="font-medium text-accent">
                     #{String(o.order_number).padStart(3, '0')}
                   </div>
-                  <div className="text-xs text-white/50">{o.customer_phone}</div>
+                  <div className="text-xs text-white/50 truncate max-w-[180px]">
+                    {displayName(o.customer_name, o.customer_phone)}
+                  </div>
                 </div>
                 <div className="text-right">
                   <div>{brl(o.total)}</div>
