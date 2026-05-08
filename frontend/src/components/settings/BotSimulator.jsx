@@ -33,6 +33,17 @@ export default function BotSimulator() {
     mutationFn: () => api.post('/api/admin/simulate', { phone, text }).then((r) => r.data),
     onSuccess: (data) => {
       append({ role: 'user', content: data.user_text })
+      // If the bot's turn invoked send_menu_image (or any future media tool)
+      // surface the image as its own bubble before the friendly text reply,
+      // matching the order the customer sees on WhatsApp.
+      if (data.bot_media_url) {
+        append({
+          role: 'assistant',
+          content: '',
+          media_url: data.bot_media_url,
+          media_type: data.bot_media_type || 'image',
+        })
+      }
       append({ role: 'assistant', content: data.bot_reply || '(sem resposta — handoff)' })
       data.notes?.forEach((n) => toast(n, { icon: '⚠️' }))
       setText('')
@@ -65,6 +76,14 @@ export default function BotSimulator() {
         media_url: previewUrl,
         media_type: previewType,
       })
+      if (data.bot_media_url) {
+        append({
+          role: 'assistant',
+          content: '',
+          media_url: data.bot_media_url,
+          media_type: data.bot_media_type || 'image',
+        })
+      }
       append({ role: 'assistant', content: data.bot_reply || '(sem resposta — handoff)' })
       data.notes?.forEach((n) => toast(n, { icon: '⚠️' }))
       setText('')
@@ -168,7 +187,7 @@ export default function BotSimulator() {
           history.map((m, i) => {
             const url = resolveMedia(m.media_url)
             const placeholder = ['[IMAGEM ENVIADA]', '[ÁUDIO ENVIADO]', '[ÁUDIO INAUDÍVEL]']
-            const hideText = url && placeholder.includes(m.content)
+            const hideText = url && (!m.content || placeholder.includes(m.content) || /^\[CARDÁPIO /i.test(m.content))
             return (
               <div
                 key={i}

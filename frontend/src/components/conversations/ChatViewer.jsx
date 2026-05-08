@@ -67,7 +67,11 @@ function Bubble({ msg }) {
   // Hide the synthetic placeholder text when an image/audio is shown — the
   // bubble already conveys "media" visually.
   const placeholder = ['[IMAGEM ENVIADA]', '[ÁUDIO ENVIADO]', '[ÁUDIO INAUDÍVEL]']
-  const hideText = msg.media_url && placeholder.includes(msg.content)
+  const hideText =
+    msg.media_url &&
+    (!msg.content ||
+      placeholder.includes(msg.content) ||
+      /^\[CARDÁPIO /i.test(msg.content))
 
   return (
     <motion.div

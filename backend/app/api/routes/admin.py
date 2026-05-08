@@ -40,6 +40,11 @@ class SimulateResponse(BaseModel):
     bot_reply: Optional[str]
     bot_state: dict
     notes: list[str] = []
+    # Set when the bot's turn invoked a tool that ships media (today: only
+    # send_menu_image). Lets the simulator panel render the image bubble
+    # without a second round-trip to /api/conversations/.../messages.
+    bot_media_url: Optional[str] = None
+    bot_media_type: Optional[str] = None
 
 
 @router.post("/simulate", response_model=SimulateResponse)
@@ -72,12 +77,20 @@ async def simulate_customer_message(
     )
     state = await state_svc.get_state(payload.phone)
 
+    # Tool calls (e.g. send_menu_image) stash media here so the panel can
+    # render it; consume + clear so the next turn starts fresh.
+    media = state.pop("_last_bot_media", None) if isinstance(state, dict) else None
+    if media:
+        await state_svc.set_state(payload.phone, state)
+
     return SimulateResponse(
         phone=payload.phone,
         user_text=payload.text,
         bot_reply=reply,
         bot_state=state,
         notes=notes,
+        bot_media_url=(media or {}).get("url"),
+        bot_media_type=(media or {}).get("type"),
     )
 
 
@@ -142,12 +155,18 @@ async def simulate_customer_media(
     )
     state = await state_svc.get_state(phone)
 
+    bot_media = state.pop("_last_bot_media", None) if isinstance(state, dict) else None
+    if bot_media:
+        await state_svc.set_state(phone, state)
+
     return SimulateResponse(
         phone=phone,
         user_text=text,
         bot_reply=reply,
         bot_state=state,
         notes=notes,
+        bot_media_url=(bot_media or {}).get("url"),
+        bot_media_type=(bot_media or {}).get("type"),
     )
 
 

@@ -882,6 +882,22 @@ async def _execute_tool_call(
                     media_base64_or_url=media_payload,
                     media_type="image",
                 )
+                # Persist as an assistant message so both the admin chat viewer
+                # (real customer side) and the simulator panel can render the
+                # image. The text body is empty so the chat viewer's
+                # placeholder-hide logic kicks in and only the <img> shows.
+                await _persist_message(
+                    db,
+                    phone=phone,
+                    customer_id=state.get("customer_id"),
+                    role=MessageRole.assistant,
+                    content=f"[CARDÁPIO {category.upper()}]",
+                    media_url=url,
+                    media_type="image",
+                )
+                # Stash for the simulator response so the panel can render it
+                # in its own in-memory transcript without a second round-trip.
+                state["_last_bot_media"] = {"url": url, "type": "image"}
                 return (
                     f"OK — imagem do cardápio '{category}' enviada pelo WhatsApp. "
                     "Mande SÓ uma frase curta pro cliente (ex: 'Manda aí, ó 👇' "
