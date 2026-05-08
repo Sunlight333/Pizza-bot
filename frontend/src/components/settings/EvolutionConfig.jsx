@@ -276,7 +276,7 @@ export default function EvolutionConfig() {
             className="mt-4 p-4 bg-white rounded-2xl flex flex-col items-center gap-2"
           >
             {qrLoading && !qrImage ? (
-              <div className="text-bg text-sm">Gerando QR...</div>
+              <div className="text-slate-900 text-sm">Gerando QR...</div>
             ) : qrImage ? (
               <img
                 src={qrImage.startsWith('data:') ? qrImage : `data:image/png;base64,${qrImage}`}
@@ -284,11 +284,11 @@ export default function EvolutionConfig() {
                 className="w-56 h-56"
               />
             ) : (
-              <div className="text-bg text-sm">
+              <div className="text-slate-900 text-sm text-center">
                 QR não disponível — clique em "Resetar instância" e tente de novo
               </div>
             )}
-            <p className="text-bg/70 text-xs text-center">
+            <p className="text-slate-600 text-xs text-center">
               Abra o WhatsApp no celular → Aparelhos conectados → Conectar um aparelho
             </p>
           </motion.div>
