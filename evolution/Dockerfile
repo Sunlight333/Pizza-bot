@@ -24,15 +24,39 @@ FROM atendai/evolution-api:v2.2.3
 RUN node -e "\
   const fs = require('fs'); \
   const p = '/evolution/dist/api/services/channel.service.js'; \
-  const src = fs.readFileSync(p, 'utf8'); \
-  const out = src.replace( \
+  let s = fs.readFileSync(p, 'utf8'); \
+  let count = 0; \
+  /* Patch 1: whatsappNumber() return value — make existence check pass for @lid. */ \
+  let p1 = s.replace( \
     /exists:!!g\?\.exists,jid:h,/g, \
     'exists:(typeof h===\"string\"&&h.endsWith(\"@lid\")?true:!!g?.exists),jid:h,' \
   ); \
-  if (out === src) { \
-    console.error('LID-bypass patch did NOT apply — vendor minifier output changed.'); \
+  if (p1 !== s) { count++; s = p1; } \
+  /* Patch 2: every send-side guard \`if (!n.exists && !isJidGroup && !@broadcast) throw\`. \
+     Add an @lid escape so Baileys' relay layer is reached for LID recipients. \
+     Multiple call sites (sendText, sendMedia, sendButtons, etc.) share this idiom. */ \
+  let p2 = s.replace( \
+    /\.jid\.includes\(\"@broadcast\"\)\)\s*throw new f\(/g, \
+    '.jid.includes(\"@broadcast\")&&!n.jid.includes(\"@lid\")&&!s.jid.includes(\"@lid\"))throw new f(' \
+  ); \
+  /* The above won't match every site because variable names vary (n vs s). Use a more \
+     surgical regex on the specific minified shape: `!n.jid.includes(\"@broadcast\"))throw` \
+     and `!s.jid.includes(\"@broadcast\"))throw`. */ \
+  s = p1; \
+  let p3a = s.replace( \
+    /!n\.jid\.includes\(\"@broadcast\"\)\)throw new f\(n\)/g, \
+    '!n.jid.includes(\"@broadcast\")&&!n.jid.endsWith(\"@lid\"))throw new f(n)' \
+  ); \
+  if (p3a !== s) { count++; s = p3a; } \
+  let p3b = s.replace( \
+    /!s\.jid\.includes\(\"@broadcast\"\)\)throw new f\(s\)/g, \
+    '!s.jid.includes(\"@broadcast\")&&!s.jid.endsWith(\"@lid\"))throw new f(s)' \
+  ); \
+  if (p3b !== s) { count++; s = p3b; } \
+  if (count < 2) { \
+    console.error('LID-bypass patch incomplete: applied=' + count + ' (expected >=2). Vendor output changed?'); \
     process.exit(1); \
   } \
-  fs.writeFileSync(p, out); \
-  console.log('LID-bypass patch applied to channel.service.js'); \
+  fs.writeFileSync(p, s); \
+  console.log('LID-bypass patch applied:', count, 'sites'); \
 "
