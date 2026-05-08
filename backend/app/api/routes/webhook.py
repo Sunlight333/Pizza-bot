@@ -22,9 +22,40 @@ router = APIRouter()
 
 
 def _extract_phone(data: dict) -> Optional[str]:
-    key = data.get("key", {}) or {}
+    """Extract the customer's phone number from a webhook event.
+
+    WhatsApp's privacy protocol now sends `remoteJid` as `<lid>@lid`
+    (a 15-digit anonymized identifier) for users with privacy enabled.
+    The actual phone JID is in `senderPn` / `participantPn` (Evolution
+    v2.2.x). We must use that — sending text to an LID number returns
+    400 "exists: false" because the LID is not a real phone number.
+    """
+    key = data.get("key") or {}
+
+    # Real-phone JID fields, checked in priority order
+    for field in ("senderPn", "participantPn"):
+        for source in (key, data):
+            val = source.get(field)
+            if val:
+                local = val.split("@")[0] if "@" in val else val
+                if local and local.isdigit():
+                    return local
+
     remote = key.get("remoteJid") or ""
-    return remote.split("@")[0] if remote else None
+    if not remote:
+        return None
+
+    # If the JID is an LID, we have no phone — drop the message rather than
+    # try to send to a fake number and 400.
+    if remote.endswith("@lid"):
+        log.warning(
+            "webhook: remoteJid is an LID (%s) and no senderPn/participantPn — "
+            "drop event. Available top-level keys: %s. Key keys: %s",
+            remote, list(data.keys()), list(key.keys()),
+        )
+        return None
+
+    return remote.split("@")[0] or None
 
 
 def _extract_text(data: dict) -> Optional[str]:
