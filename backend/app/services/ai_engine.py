@@ -950,7 +950,6 @@ async def process_incoming(
             db, phone=phone, customer_id=state.get("customer_id"),
             role=MessageRole.user, content=text, is_audio=is_audio,
             media_url=media_url, media_type=media_type,
-            media_url=media_url, media_type=media_type,
         )
         return None
 
