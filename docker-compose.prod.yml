@@ -64,6 +64,11 @@ services:
       DATABASE_PROVIDER: postgresql
       DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/evolution
       DATABASE_CONNECTION_CLIENT_NAME: evolution_exchange
+      # WhatsApp Web protocol version — must be kept current or Baileys
+      # silently fails the handshake (no QR emitted, no error). Bump to
+      # whatever WhatsAppSockets/Baileys' baileys-version.json upstream
+      # reports if pairing breaks again.
+      CONFIG_SESSION_PHONE_VERSION: 2.3000.1035194821
       CACHE_REDIS_ENABLED: "true"
       CACHE_REDIS_URI: redis://redis:6379/1
       CACHE_REDIS_PREFIX_KEY: evolution
