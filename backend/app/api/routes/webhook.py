@@ -45,6 +45,12 @@ def _extract_phone(data: dict) -> Optional[str]:
     if not remote:
         return None
 
+    # WhatsApp groups arrive with `<id>@g.us`. The bot is a 1:1 ordering
+    # assistant — drop group traffic so we don't create stale "Sem nome"
+    # customer rows for every notification group the number is added to.
+    if remote.endswith("@g.us") or remote.endswith("@broadcast"):
+        return None
+
     # If the JID is an LID, we have no phone — drop the message rather than
     # try to send to a fake number and 400.
     if remote.endswith("@lid"):
