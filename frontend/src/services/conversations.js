@@ -10,6 +10,17 @@ export const conversationsApi = {
   release: (phone) => api.post(`/api/conversations/${phone}/release`).then((r) => r.data),
   send: (phone, content) =>
     api.post(`/api/conversations/${phone}/send`, { content }).then((r) => r.data),
+  sendMedia: (phone, { file, mediaType, caption }) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('media_type', mediaType)
+    if (caption) fd.append('caption', caption)
+    return api
+      .post(`/api/conversations/${phone}/send-media`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data)
+  },
 }
 
 export const STATE_LABEL = {

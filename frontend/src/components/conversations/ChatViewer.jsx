@@ -6,9 +6,49 @@ import { Bot, User, Volume2, ShieldCheck } from 'lucide-react'
 import { conversationsApi } from '@/services/conversations'
 import PizzaSpinner from '@/components/ui/PizzaSpinner'
 import { useChatStream } from '@/hooks/useChatStream'
+import { getApiBase } from '@/utils/apiUrl'
 
 const fmtTime = (iso) =>
   new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+
+// Media URLs are stored as `/media/chats/<file>`; prefix with the API base so
+// the <img> / <audio> tags hit the backend (same nginx proxy already serves
+// /media in production).
+const resolveMedia = (url) =>
+  !url ? null : (/^https?:/i.test(url) ? url : `${getApiBase()}${url}`)
+
+function MediaAttachment({ msg, dark }) {
+  // dark=true → user/assistant bubbles (existing dark color schemes), use a
+  // brighter audio chrome. Admin bubbles already lean light so the default
+  // chrome works.
+  const url = resolveMedia(msg.media_url)
+  if (!url) return null
+  const type = msg.media_type || (msg.is_audio ? 'audio' : null)
+  if (type === 'image') {
+    return (
+      <a href={url} target="_blank" rel="noreferrer" className="block mb-1">
+        <img
+          src={url}
+          alt="anexo"
+          loading="lazy"
+          className="rounded-lg max-h-72 max-w-full object-contain bg-black/20"
+        />
+      </a>
+    )
+  }
+  if (type === 'audio') {
+    return (
+      <audio
+        controls
+        preload="metadata"
+        src={url}
+        className={`w-full mt-1 ${dark ? 'audio-dark' : ''}`}
+        style={{ maxWidth: 260 }}
+      />
+    )
+  }
+  return null
+}
 
 function Bubble({ msg }) {
   const isAdmin = msg.role === 'admin'
@@ -23,6 +63,11 @@ function Bubble({ msg }) {
     : isAdmin
       ? 'bg-purple-500/15 text-purple-100 border border-purple-500/30 rounded-tr-md'
       : 'bg-primary/15 text-white border border-primary/30 rounded-tr-md'
+
+  // Hide the synthetic placeholder text when an image/audio is shown — the
+  // bubble already conveys "media" visually.
+  const placeholder = ['[IMAGEM ENVIADA]', '[ÁUDIO ENVIADO]', '[ÁUDIO INAUDÍVEL]']
+  const hideText = msg.media_url && placeholder.includes(msg.content)
 
   return (
     <motion.div
@@ -43,9 +88,12 @@ function Bubble({ msg }) {
               <ShieldCheck size={10} /> Atendente
             </div>
           )}
-          <div className="text-sm whitespace-pre-wrap break-words">{msg.content}</div>
+          <MediaAttachment msg={msg} dark />
+          {!hideText && (
+            <div className="text-sm whitespace-pre-wrap break-words">{msg.content}</div>
+          )}
           <div className="text-[10px] opacity-60 mt-1 flex items-center gap-1 justify-end">
-            {msg.is_audio && <Volume2 size={10} />}
+            {(msg.is_audio || msg.media_type === 'audio') && <Volume2 size={10} />}
             {fmtTime(msg.created_at)}
           </div>
         </div>

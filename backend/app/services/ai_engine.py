@@ -380,6 +380,8 @@ async def _persist_message(
     role: MessageRole,
     content: str,
     is_audio: bool = False,
+    media_url: Optional[str] = None,
+    media_type: Optional[str] = None,
 ) -> None:
     db.add(
         ConversationMessage(
@@ -388,6 +390,8 @@ async def _persist_message(
             role=role,
             content=content,
             is_audio=is_audio,
+            media_url=media_url,
+            media_type=media_type,
         )
     )
     await db.commit()
@@ -926,10 +930,17 @@ async def process_incoming(
     phone: str,
     text: str,
     is_audio: bool = False,
+    media_url: Optional[str] = None,
+    media_type: Optional[str] = None,
 ) -> Optional[str]:
     """
     Main entry — process a single incoming message and return a reply string (or None if
     in human-takeover mode).
+
+    media_url / media_type carry the inbound attachment (an image or the
+    original voice note) so the admin chat viewer can render it. They are
+    only attached to the persisted MessageRole.user row; the AI itself
+    only sees the transcribed/synthesised `text`.
     """
     state = await state_svc.get_state(phone)
 
@@ -938,6 +949,8 @@ async def process_incoming(
         await _persist_message(
             db, phone=phone, customer_id=state.get("customer_id"),
             role=MessageRole.user, content=text, is_audio=is_audio,
+            media_url=media_url, media_type=media_type,
+            media_url=media_url, media_type=media_type,
         )
         return None
 
@@ -969,6 +982,7 @@ async def process_incoming(
         await _persist_message(
             db, phone=phone, customer_id=customer.id,
             role=MessageRole.user, content=text, is_audio=is_audio,
+            media_url=media_url, media_type=media_type,
         )
         await _persist_message(
             db, phone=phone, customer_id=customer.id,
@@ -1004,6 +1018,7 @@ async def process_incoming(
         await _persist_message(
             db, phone=phone, customer_id=customer.id,
             role=MessageRole.user, content=text, is_audio=is_audio,
+            media_url=media_url, media_type=media_type,
         )
         await _persist_message(
             db, phone=phone, customer_id=customer.id,
@@ -1036,6 +1051,7 @@ async def process_incoming(
         await _persist_message(
             db, phone=phone, customer_id=customer.id,
             role=MessageRole.user, content=text, is_audio=is_audio,
+            media_url=media_url, media_type=media_type,
         )
         await _persist_message(
             db, phone=phone, customer_id=customer.id,
@@ -1092,6 +1108,7 @@ async def process_incoming(
         await _persist_message(
             db, phone=phone, customer_id=customer.id,
             role=MessageRole.user, content=text, is_audio=is_audio,
+            media_url=media_url, media_type=media_type,
         )
         await _persist_message(
             db, phone=phone, customer_id=customer.id,
@@ -1189,6 +1206,7 @@ async def process_incoming(
     await _persist_message(
         db, phone=phone, customer_id=state.get("customer_id"),
         role=MessageRole.user, content=text, is_audio=is_audio,
+            media_url=media_url, media_type=media_type,
     )
     if reply:
         await _persist_message(

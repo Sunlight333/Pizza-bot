@@ -1,10 +1,11 @@
 """Conversation viewer API for the admin panel."""
+import base64
 import json
 from datetime import datetime, timezone
 from typing import List, Optional
 
 import redis.asyncio as redis
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +17,12 @@ from app.models.conversation_message import ConversationMessage, MessageRole
 from app.models.customer import Customer
 from app.services import conversation_state as state_svc
 from app.services import handoff as handoff_svc
+from app.services.chat_media import save_chat_media
 from app.services.whatsapp import client as wa_client
+
+# Cap operator-uploaded media. Images come from the panel's file picker
+# (or PWA camera capture); audio comes from a 30-60 s MediaRecorder blob.
+MAX_MEDIA_BYTES = 16 * 1024 * 1024  # 16 MB
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -36,6 +42,8 @@ class ConversationMessageOut(BaseModel):
     role: str
     content: str
     is_audio: bool
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None
     created_at: datetime
 
 
@@ -119,6 +127,8 @@ async def list_messages(
             role=r.role.value,
             content=r.content,
             is_audio=r.is_audio,
+            media_url=r.media_url,
+            media_type=r.media_type,
             created_at=r.created_at,
         )
         for r in rows
@@ -162,9 +172,89 @@ async def send_admin_message(
     from app.services.websocket import manager
     await manager.broadcast(
         "chat_message",
-        {"phone": phone, "role": "admin", "content": text, "is_audio": False},
+        {
+            "phone": phone, "role": "admin", "content": text,
+            "is_audio": False, "media_url": None, "media_type": None,
+        },
     )
     return {"ok": True}
+
+
+@router.post("/{phone}/send-media")
+async def send_admin_media(
+    phone: str,
+    file: UploadFile = File(...),
+    media_type: str = Form(...),
+    caption: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Operator sends an image or voice note in a chat. Saves the file under
+    /media/chats/, ships it via Evolution (sendMedia for images, sendWhatsAppAudio
+    for voice notes), and persists a MessageRole.admin row referencing the URL
+    so the chat viewer can render it for both this admin and any other connected
+    operator over the websocket broadcast.
+    """
+    if media_type not in ("image", "audio"):
+        raise HTTPException(400, "media_type must be image or audio")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "empty upload")
+    if len(raw) > MAX_MEDIA_BYTES:
+        raise HTTPException(400, f"file too large (max {MAX_MEDIA_BYTES // (1024*1024)} MB)")
+
+    public_url, _ = save_chat_media(
+        raw,
+        media_type=media_type,
+        content_type=file.content_type,
+        filename=file.filename,
+    )
+
+    payload_b64 = base64.b64encode(raw).decode("ascii")
+    try:
+        if media_type == "audio":
+            await wa_client.send_audio(phone, payload_b64)
+        else:
+            await wa_client.send_media(
+                phone,
+                media_base64_or_url=payload_b64,
+                media_type="image",
+                caption=caption or None,
+            )
+    except Exception as e:
+        # The file is already on disk; don't leak it if WhatsApp delivery failed —
+        # the operator will retry, and orphaned bytes are cheap to clean periodically.
+        raise HTTPException(502, f"failed to send to whatsapp: {e}")
+
+    text_content = caption.strip() if caption and caption.strip() else (
+        "[ÁUDIO ENVIADO]" if media_type == "audio" else "[IMAGEM ENVIADA]"
+    )
+    db.add(
+        ConversationMessage(
+            phone=phone,
+            role=MessageRole.admin,
+            content=text_content,
+            is_audio=(media_type == "audio"),
+            media_url=public_url,
+            media_type=media_type,
+        )
+    )
+    await db.commit()
+
+    from app.services.websocket import manager
+    await manager.broadcast(
+        "chat_message",
+        {
+            "phone": phone,
+            "role": "admin",
+            "content": text_content,
+            "is_audio": media_type == "audio",
+            "media_url": public_url,
+            "media_type": media_type,
+        },
+    )
+    return {"ok": True, "media_url": public_url}
 
 
 @router.get("/recent-phones")

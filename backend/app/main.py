@@ -96,6 +96,8 @@ app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 # and stored URLs work without CORS or extra config.
 MEDIA_ROOT = Path(__file__).resolve().parent.parent / "media"
 (MEDIA_ROOT / "products").mkdir(parents=True, exist_ok=True)
+# Chat attachments (operator + customer) — see services/chat_media.py
+(MEDIA_ROOT / "chats").mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=MEDIA_ROOT), name="media")
 
 

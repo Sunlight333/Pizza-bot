@@ -9,15 +9,21 @@ ai_engine.process_incoming() function the real webhook uses.
 """
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.database import get_db
+from app.services import audio as audio_svc
 from app.services.ai_engine import process_incoming
+from app.services.chat_media import save_chat_media
 from app.services import conversation_state as state_svc
 from app.services import handoff as handoff_svc
+
+# Same cap as /api/conversations/{phone}/send-media; voice notes are usually
+# under 1 MB, images under a few MB.
+SIMULATE_MAX_MEDIA_BYTES = 16 * 1024 * 1024  # 16 MB
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -69,6 +75,76 @@ async def simulate_customer_message(
     return SimulateResponse(
         phone=payload.phone,
         user_text=payload.text,
+        bot_reply=reply,
+        bot_state=state,
+        notes=notes,
+    )
+
+
+@router.post("/simulate-media", response_model=SimulateResponse)
+async def simulate_customer_media(
+    phone: str = Form(...),
+    media_type: str = Form(...),
+    file: UploadFile = File(...),
+    caption: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Same as /simulate, but the operator drives the bot with an image or a
+    voice note. Voice notes are transcribed (same path the real webhook uses)
+    so the AI sees the text; images become a synthetic `[IMAGEM ENVIADA]`
+    turn so the bot can decide to ask for clarification or hand off.
+    """
+    notes: list[str] = []
+    if not phone.strip():
+        raise HTTPException(400, "phone required")
+    if media_type not in ("image", "audio"):
+        raise HTTPException(400, "media_type must be image or audio")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "empty upload")
+    if len(raw) > SIMULATE_MAX_MEDIA_BYTES:
+        raise HTTPException(
+            400, f"file too large (max {SIMULATE_MAX_MEDIA_BYTES // (1024*1024)} MB)"
+        )
+
+    public_url, _ = save_chat_media(
+        raw,
+        media_type=media_type,
+        content_type=file.content_type,
+        filename=file.filename,
+    )
+
+    if media_type == "audio":
+        text = await audio_svc.transcribe_audio(raw)
+        if not text:
+            text = "[ÁUDIO INAUDÍVEL]"
+        is_audio = True
+    else:
+        text = (caption or "").strip() or "[IMAGEM ENVIADA]"
+        is_audio = False
+
+    cleaned = "".join(c for c in phone if c.isdigit())
+    if len(cleaned) >= 12 and cleaned.startswith("55"):
+        notes.append(
+            "phone resembles a real Brazilian number — bot WILL persist conversation "
+            "and customer rows for it"
+        )
+
+    reply = await process_incoming(
+        db,
+        phone=phone,
+        text=text,
+        is_audio=is_audio,
+        media_url=public_url,
+        media_type=media_type,
+    )
+    state = await state_svc.get_state(phone)
+
+    return SimulateResponse(
+        phone=phone,
+        user_text=text,
         bot_reply=reply,
         bot_state=state,
         notes=notes,

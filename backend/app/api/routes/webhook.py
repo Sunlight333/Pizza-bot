@@ -75,6 +75,24 @@ def _extract_audio_id(data: dict) -> Optional[str]:
     return None
 
 
+def _extract_image_id(data: dict) -> Optional[str]:
+    """Return the message id when this is an inbound image, else None.
+
+    The actual bytes are fetched separately via wa_client.download_media.
+    """
+    msg = data.get("message") or {}
+    if "imageMessage" in msg:
+        return (data.get("key") or {}).get("id")
+    return None
+
+
+def _extract_image_caption(data: dict) -> Optional[str]:
+    msg = data.get("message") or {}
+    img = msg.get("imageMessage") or {}
+    cap = img.get("caption")
+    return cap.strip() if isinstance(cap, str) and cap.strip() else None
+
+
 def _extract_location(data: dict) -> Optional[tuple[float, float]]:
     """Pull (lat, lng) from a WhatsApp shared-location message, if present.
 
@@ -136,11 +154,28 @@ async def _process(event: dict) -> None:
 
     text = _extract_text(data)
     audio_id = _extract_audio_id(data)
+    image_id = _extract_image_id(data)
     location = _extract_location(data)
+
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None
 
     if audio_id and not text:
         audio_bytes = await wa_client.download_media(audio_id)
         if audio_bytes:
+            # Save the original voice note so the admin chat viewer can
+            # play it, then transcribe for the AI.
+            try:
+                from app.services.chat_media import save_chat_media
+                media_url, _ = save_chat_media(
+                    audio_bytes,
+                    media_type="audio",
+                    content_type="audio/ogg",
+                    filename=f"{audio_id}.ogg",
+                )
+                media_type = "audio"
+            except Exception as e:
+                log.warning("save inbound audio failed: %s", e)
             text = await audio_svc.transcribe_audio(audio_bytes)
         if not text:
             await wa_client.send_text(
@@ -148,6 +183,28 @@ async def _process(event: dict) -> None:
                 "Desculpa, não consegui entender o áudio. Pode escrever ou mandar de novo?",
             )
             return
+
+    if image_id:
+        # Save the inbound image so the operator can see it. The bot itself
+        # treats the image as a synthetic [IMAGEM] turn — GPT-4o doesn't get
+        # vision here; if the customer sends a pizza photo we just route to
+        # human handoff after the bot's polite acknowledgement.
+        img_bytes = await wa_client.download_media(image_id)
+        if img_bytes:
+            try:
+                from app.services.chat_media import save_chat_media
+                media_url, _ = save_chat_media(
+                    img_bytes,
+                    media_type="image",
+                    content_type="image/jpeg",
+                    filename=f"{image_id}.jpg",
+                )
+                media_type = "image"
+            except Exception as e:
+                log.warning("save inbound image failed: %s", e)
+        caption = _extract_image_caption(data)
+        if not text:
+            text = caption or "[IMAGEM ENVIADA]"
 
     # Location pin: write coords directly into the conversation cart, then
     # feed a synthetic turn to the bot so it can confirm with the customer
@@ -174,7 +231,14 @@ async def _process(event: dict) -> None:
         return
 
     async with AsyncSessionLocal() as db:
-        reply = await process_incoming(db, phone=phone, text=text, is_audio=bool(audio_id))
+        reply = await process_incoming(
+            db,
+            phone=phone,
+            text=text,
+            is_audio=bool(audio_id),
+            media_url=media_url,
+            media_type=media_type,
+        )
     if reply:
         await wa_client.send_text(phone, reply)
 
