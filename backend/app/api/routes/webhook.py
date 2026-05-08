@@ -48,10 +48,21 @@ def _extract_phone(data: dict) -> Optional[str]:
     # If the JID is an LID, we have no phone — drop the message rather than
     # try to send to a fake number and 400.
     if remote.endswith("@lid"):
+        # One-time deep dump so we can spot any field Evolution v2 may add
+        # that carries the real phone (senderPn variants, contextInfo, etc.)
+        # The dump is bounded to keep logs small; only the JSONable subset.
+        try:
+            import json as _json
+            preview = _json.dumps(
+                {k: data.get(k) for k in data.keys() if k != "message"},
+                default=str,
+            )[:1500]
+        except Exception:
+            preview = "<unserialisable>"
         log.warning(
             "webhook: remoteJid is an LID (%s) and no senderPn/participantPn — "
-            "drop event. Available top-level keys: %s. Key keys: %s",
-            remote, list(data.keys()), list(key.keys()),
+            "drop event. Top-level keys: %s. Key keys: %s. Trimmed payload: %s",
+            remote, list(data.keys()), list(key.keys()), preview,
         )
         return None
 
