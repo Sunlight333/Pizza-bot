@@ -148,17 +148,25 @@ def _verify_signature(raw_body: bytes, header_signature: Optional[str]) -> bool:
 async def _process(event: dict) -> None:
     event_type = event.get("event") or event.get("eventType")
     data = event.get("data") or {}
+    key = data.get("key") or {}
+    log.info(
+        "webhook _process: event=%s fromMe=%s remoteJid=%s msgId=%s",
+        event_type, key.get("fromMe"), key.get("remoteJid"), key.get("id"),
+    )
 
     if event_type and "message" not in event_type.lower():
+        log.info("webhook _process: skipping non-message event %s", event_type)
         return
 
-    key = data.get("key") or {}
     if key.get("fromMe"):
+        log.info("webhook _process: skipping fromMe (own message)")
         return
 
     phone = _extract_phone(data)
     if not phone:
+        log.info("webhook _process: phone unresolved (LID/group/empty) — drop")
         return
+    log.info("webhook _process: resolved phone=%s, dispatching to ai_engine", phone)
 
     # Mark the inbound message as read before any processing — gives the
     # customer the blue checkmarks immediately, which a real attendant would
