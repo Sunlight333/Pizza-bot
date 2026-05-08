@@ -53,7 +53,11 @@ services:
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
 
   evolution:
-    image: atendai/evolution-api:v2.2.3
+    # Custom image: upstream v2.2.3 + LID-bypass patch on the outbound
+    # validator so the bot can reply to modern WhatsApp clients (which route
+    # via `<id>@lid` JIDs, not phone JIDs). See evolution/Dockerfile.
+    build: ./evolution
+    image: pizzabot-evolution:v2.2.3-lid
     restart: always
     environment:
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
