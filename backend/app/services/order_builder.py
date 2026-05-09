@@ -35,6 +35,7 @@ async def add_pizza(
     crust: Optional[str] = None,
     extras: Optional[list[str]] = None,
     quantity: int = 1,
+    sem_massa: bool = False,
 ) -> dict:
     products = await _load_products(db, flavor_ids)
     flavors = [products[i] for i in flavor_ids if i in products]
@@ -43,7 +44,27 @@ async def add_pizza(
 
     validate_combination(flavors, size, crust, extras)
 
-    if len(flavors) == 1:
+    # If the pizzaria opted into flat pizza pricing in BotConfig, every pizza
+    # uses that price as the base — no per-size lookup, no half-pizza math.
+    # Crust upcharges and paid extras still add on top.
+    from app.models.bot_config import BotConfig
+    cfg = (await db.execute(select(BotConfig).where(BotConfig.id == 1))).scalar_one_or_none()
+
+    flat_with = float(cfg.pizza_flat_price_with_crust) if cfg and cfg.pizza_flat_price_with_crust is not None else None
+    flat_without = float(cfg.pizza_flat_price_without_crust) if cfg and cfg.pizza_flat_price_without_crust is not None else None
+
+    if sem_massa:
+        if flat_without is None:
+            raise ValueError(
+                "Pizza sem massa não está habilitada (configure pizza_flat_price_without_crust)."
+            )
+        price = flat_without
+        # When the customer goes sem massa, paid bordas don't apply (no crust
+        # to recheio). Silently ignore any crust the LLM passed.
+        crust = None
+    elif flat_with is not None:
+        price = flat_with
+    elif len(flavors) == 1:
         price = next(
             (float(s["price"]) for s in (flavors[0].sizes or []) if s["size"].lower() == size.lower()),
             None,
@@ -51,13 +72,10 @@ async def add_pizza(
         if price is None:
             raise ValueError(f"Tamanho '{size}' indisponível")
     elif len(flavors) == 2:
-        from app.models.bot_config import BotConfig
-        cfg = (await db.execute(select(BotConfig).where(BotConfig.id == 1))).scalar_one_or_none()
         mode = (cfg.half_pizza_pricing if cfg else "max") or "max"
         price = calculate_half_pizza_price(flavors[0], flavors[1], size, mode=mode)
     else:
         # 3+ flavors — defensive (BR pizzarias rarely allow this; bot validates earlier).
-        # Use max across all halves regardless of mode — averaging doesn't generalise cleanly.
         prices = []
         for f in flavors:
             p = next((float(s["price"]) for s in (f.sizes or []) if s["size"].lower() == size.lower()), None)
@@ -68,8 +86,7 @@ async def add_pizza(
 
     # Paid extras (e.g. "extra queijo R$ 5") and stuffed-crust upcharges
     # (catupiry/cheddar) add to the unit price; free options ("sem borda",
-    # cebola, requeijão) are catalogued at 0 and pass through. Per-size
-    # pricing means catupiry on brotinho costs less than on grande.
+    # cebola, requeijão) are catalogued at 0 and pass through.
     price = round(
         price
         + crust_price(flavors[0], crust, size)
@@ -78,6 +95,8 @@ async def add_pizza(
     )
 
     description = build_pizza_description(flavors, size, crust, extras)
+    if sem_massa:
+        description = description + " (SEM MASSA)"
     item = {
         "product_id": flavors[0].id,  # representative; Datacaixa uses description
         "description": description,

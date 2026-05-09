@@ -24,6 +24,11 @@ class BotConfigBase(BaseModel):
     pix_holder: Optional[str] = None
 
     half_pizza_pricing: HalfPizzaPricing = "max"
+
+    # Optional flat pizza pricing — see BotConfig model for semantics.
+    pizza_flat_price_with_crust: Optional[float] = None
+    pizza_flat_price_without_crust: Optional[float] = None
+
     default_ncm: Optional[str] = None
     default_cfop: Optional[str] = None
     default_csosn: Optional[str] = None
@@ -54,6 +59,8 @@ class BotConfigUpdate(BaseModel):
     pix_holder: Optional[str] = None
 
     half_pizza_pricing: Optional[HalfPizzaPricing] = None
+    pizza_flat_price_with_crust: Optional[float] = None
+    pizza_flat_price_without_crust: Optional[float] = None
     default_ncm: Optional[str] = None
     default_cfop: Optional[str] = None
     default_csosn: Optional[str] = None

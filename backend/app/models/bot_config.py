@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import Boolean, Integer, String, Text
+from sqlalchemy import Boolean, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -50,6 +50,23 @@ class BotConfig(Base, TimestampMixin):
     # Meio-a-meia: 'max' (BR standard), 'average', or 'first'.
     # Configurable so we don't need a code redeploy when Marcio decides.
     half_pizza_pricing: Mapped[str] = mapped_column(String(16), default="max", nullable=False)
+
+    # --- Optional flat pizza pricing ---
+    # When pizza_flat_price_with_crust is set (non-null), every pizza ordered
+    # uses that price as its base — single flavour OR meio-a-meio, regardless
+    # of size or per-product .sizes pricing. Crust upcharges and paid extras
+    # still ADD on top. Use this when the pizzaria has a single flat price
+    # (e.g. R$ 70 for all sizes) instead of the more granular per-size table.
+    # Leave null to fall back to product.sizes per-flavour/per-size pricing.
+    pizza_flat_price_with_crust: Mapped[Optional[float]] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
+    # When set, enables the "sem massa" (low-carb / no-crust) variant at this
+    # flat price. The bot exposes a `sem_massa` flag on add_pizza_to_cart;
+    # when true, this price is used in place of pizza_flat_price_with_crust.
+    pizza_flat_price_without_crust: Mapped[Optional[float]] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
 
     # --- Default Datacaixa tax fields (C2) ---
     # Used as fallback when a product's own NCM/CFOP/etc are blank.

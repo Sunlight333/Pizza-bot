@@ -57,9 +57,18 @@ TOOLS: list[dict[str, Any]] = [
                         "description": "IDs de sabores (1 para pizza inteira, 2 para meia-a-meia)",
                     },
                     "size": {"type": "string", "description": "pequena | média | grande | gigante"},
-                    "crust": {"type": "string", "description": "Borda (opcional)"},
+                    "crust": {"type": "string", "description": "Borda (opcional). Ignorada se sem_massa=true."},
                     "extras": {"type": "array", "items": {"type": "string"}, "description": "Adicionais"},
                     "quantity": {"type": "integer", "default": 1},
+                    "sem_massa": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "Variante low-carb / sem massa. Quando true e a pizzaria oferece, "
+                            "o sistema cobra o preço de 'pizza sem massa' (mais barato) e "
+                            "ignora qualquer borda escolhida (não tem massa pra rechear)."
+                        ),
+                    },
                 },
             },
         },
@@ -578,6 +587,40 @@ async def _build_system_prompt(db: AsyncSession, state: dict) -> str:
         "first": "cobre o preço do PRIMEIRO sabor escolhido",
     }.get(cfg.half_pizza_pricing or "max", "cobre o sabor mais caro entre os dois")
 
+    # Flat pizza pricing block — only injected when the operator opted in via
+    # bot_config. When set, it OVERRIDES the half-pizza rule and the per-size
+    # pricing in the menu (the menu sizes are still shown for reference).
+    flat_with = cfg.pizza_flat_price_with_crust
+    flat_without = cfg.pizza_flat_price_without_crust
+    flat_price_block = ""
+    if flat_with is not None:
+        with_str = f"R$ {float(flat_with):.2f}".replace(".", ",")
+        without_str = (
+            f"R$ {float(flat_without):.2f}".replace(".", ",")
+            if flat_without is not None else None
+        )
+        sem_massa_block = (
+            f"\n- Pizza SEM MASSA (low-carb / sem a massa, só os ingredientes "
+            f"em cima): {without_str}. Quando o cliente pedir 'sem massa', "
+            f"'sem a massa', 'no carb' ou similar, chame add_pizza_to_cart "
+            f"com sem_massa=true. Borda recheada NÃO se aplica nesse caso."
+            if without_str else
+            "\n- 'Sem massa' não está habilitado nesta pizzaria — se o cliente "
+            "pedir, avise educadamente que só temos pizza com massa."
+        )
+        flat_price_block = (
+            "\n\nPREÇO FECHADO DE PIZZA (regra OBRIGATÓRIA — IGNORE preços por "
+            f"tamanho do cardápio):\n"
+            f"- TODA pizza COM MASSA custa {with_str}, seja sabor único ou "
+            f"meio-a-meio, em qualquer tamanho. NÃO faça conta de meio-a-meio, "
+            f"NÃO use o preço por tamanho do cardápio para a pizza."
+            f"{sem_massa_block}\n"
+            f"- A borda recheada paga e adicionais pagos AINDA somam por cima "
+            f"do preço fechado (o sistema calcula automaticamente).\n"
+            f"- A taxa de entrega é separada e aparece no resumo como linha "
+            f"própria."
+        )
+
     return f"""Você é {bot_name}, atendente da pizzaria. Fale como uma pessoa de verdade:
 calorosa, natural, informal (use "você", "beleza", "fica tranquilo"). NUNCA soe
 robótica nem use listas numeradas de menu. Responda sempre em português brasileiro
@@ -606,7 +649,7 @@ LIMITE DE ITENS POR PEDIDO: {cfg.max_items_per_order}
 REGRAS IMPORTANTES:
 - NÃO envie o cardápio completo. Pergunte o que o cliente quer; só sugira se ele pedir.
 - Confirme sabores, tamanho, borda e adicionais antes de adicionar ao carrinho.
-- Para pizza meio-a-meio: pergunte os dois sabores e {half_pizza_rule}.
+- Para pizza meio-a-meio: pergunte os dois sabores e {half_pizza_rule}.{flat_price_block}
 - Use as funções disponíveis — NÃO invente preços ou IDs.
 - Ao perguntar endereço, peça rua, número, bairro e referência.
 - Depois do endereço, informe a taxa e o tempo estimado.
@@ -832,6 +875,7 @@ async def _execute_tool_call(
                 crust=args.get("crust"),
                 extras=args.get("extras"),
                 quantity=args.get("quantity", 1),
+                sem_massa=bool(args.get("sem_massa", False)),
             )
             state["state"] = "building_order"
             return f"OK — adicionado: {item['description']} R$ {item['unit_price']:.2f}"
