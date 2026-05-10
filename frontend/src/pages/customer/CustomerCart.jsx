@@ -9,7 +9,7 @@ import Button from '@/components/customer/Button'
 import EmptyState from '@/components/customer/EmptyState'
 import { brl } from '@/utils/customer/format'
 import { resolveMediaUrl } from '@/utils/apiUrl'
-import PlaceholderArt from '@/components/customer/PlaceholderArt'
+import { pizzaImage } from '@/utils/assets'
 
 export default function CustomerCart() {
   const navigate = useNavigate()
@@ -74,16 +74,17 @@ export default function CustomerCart() {
 
       <div className="space-y-3">
         {items.map((it, idx) => {
-          const img = resolveMediaUrl(it.image_url)
+          // Same fallback chain as ProductCard: real per-product photo,
+          // then pizzaImage() keyword-matched stock photo.
+          const meta = it.meta || {}
+          const img = it.image_url
+            ? resolveMediaUrl(it.image_url)
+            : pizzaImage(meta.product_name || it.description || '', meta.category_name || '')
           return (
             <div key={idx} className="c-card flex gap-3 p-3">
               <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0"
                    style={{ background: 'var(--c-cream)' }}>
-                {img ? (
-                  <img src={img} alt="" loading="lazy" className="w-full h-full object-cover" />
-                ) : (
-                  <PlaceholderArt name={it.meta?.product_name || it.description} />
-                )}
+                <img src={img} alt="" loading="lazy" className="w-full h-full object-cover" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold leading-tight">{it.description}</p>

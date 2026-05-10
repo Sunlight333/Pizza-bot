@@ -12,12 +12,15 @@ import { LineSkeleton } from '@/components/customer/Skeleton'
 import { brl } from '@/utils/customer/format'
 import { computeLineTotal } from '@/utils/customer/pricing'
 import { resolveMediaUrl } from '@/utils/apiUrl'
-import PlaceholderArt from '@/components/customer/PlaceholderArt'
+import { pizzaImage } from '@/utils/assets'
 
 const HIDDEN = '__hidden__'
-function realImageUrl(p) {
+
+/** Same priority as ProductCard: real photo, then pizzaImage() fallback. */
+function resolveProductImage(p) {
   const urls = (p?.image_urls || []).filter((u) => u && u !== HIDDEN)
-  return urls.length ? resolveMediaUrl(urls[0]) : null
+  if (urls.length) return resolveMediaUrl(urls[0])
+  return pizzaImage(p?.name || '', p?.category_name || '')
 }
 
 export default function CustomerProductDetail() {
@@ -87,18 +90,14 @@ export default function CustomerProductDetail() {
     }
   }
 
-  const img = realImageUrl(product)
+  const img = resolveProductImage(product)
 
   return (
     <div className="pb-32">
       {/* Hero image */}
       <div className="relative aspect-[16/10] md:aspect-[21/9] overflow-hidden"
            style={{ background: 'var(--c-cream)' }}>
-        {img ? (
-          <img src={img} alt={product.name} className="w-full h-full object-cover" />
-        ) : (
-          <PlaceholderArt name={product.name} isPizza={product.is_pizza} />
-        )}
+        <img src={img} alt={product.name} className="w-full h-full object-cover" />
         <div className="absolute inset-0"
              style={{ background: 'linear-gradient(to top, var(--c-cream) 0%, rgba(248,241,228,0) 60%)' }} />
       </div>

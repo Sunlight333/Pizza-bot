@@ -28,20 +28,8 @@ async def get_config(db: AsyncSession = Depends(get_db)):
 @router.put("", response_model=BotConfigOut)
 async def update_config(payload: BotConfigUpdate, db: AsyncSession = Depends(get_db)):
     cfg = await _get_or_create(db)
-    data = payload.model_dump(exclude_unset=True)
-    for k, v in data.items():
+    for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(cfg, k, v)
     await db.commit()
     await db.refresh(cfg)
-
-    # menu_images is part of the customer-portal menu response (per-category
-    # image fallback). Drop the cached customer menu so the new photo shows
-    # up immediately rather than after the 60s TTL expires.
-    if "menu_images" in data:
-        try:
-            from app.api.routes.customer.menu import invalidate
-            await invalidate()
-        except Exception:
-            pass
-
     return cfg

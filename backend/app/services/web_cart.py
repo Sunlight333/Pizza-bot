@@ -188,6 +188,9 @@ async def build_lines(
                 "sem_massa": sem_massa,
                 "half_with_product_id": int(half_id) if half_id else None,
                 "is_pizza": product.is_pizza,
+                # category_id lets the cart UI pick the same pizzaImage()
+                # fallback the menu uses for products without a real photo.
+                "category_id": product.category_id,
                 "image_url": (product.image_urls or [None])[0] or product.image_url,
             },
         })

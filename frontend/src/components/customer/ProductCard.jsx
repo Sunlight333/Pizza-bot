@@ -2,34 +2,38 @@ import { Link } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { brl } from '@/utils/customer/format'
 import { resolveMediaUrl } from '@/utils/apiUrl'
-import PlaceholderArt from './PlaceholderArt'
+import { pizzaImage } from '@/utils/assets'
 
 const HIDDEN = '__hidden__'
 
-function realImageUrl(p) {
-  const urls = (p.image_urls || []).filter((u) => u && u !== HIDDEN)
-  return urls.length ? resolveMediaUrl(urls[0]) : null
+/**
+ * Image priority — same as the admin Menu page so a photoless product
+ * looks identical on both portals:
+ *   1. Real per-product photo (Product.image_urls[0] / image_url)
+ *   2. pizzaImage(name, category) — keyword-matched static stock photo,
+ *      falling through to a savory/sweet category-level static asset
+ */
+function resolveImage(p) {
+  const real = (p.image_urls || []).filter((u) => u && u !== HIDDEN)
+  if (real.length) return resolveMediaUrl(real[0])
+  return pizzaImage(p.name, p.category_name || '')
 }
 
 export default function ProductCard({ product, onQuickAdd }) {
   const minPrice = product.min_price || (product.sizes || []).reduce(
     (m, s) => (s.price > 0 && (m === 0 || s.price < m) ? s.price : m), 0,
   )
-  const img = realImageUrl(product)
+  const img = resolveImage(product)
   return (
     <Link to={`/produto/${product.id}`} className="c-card c-card-tap group block">
       <div className="aspect-[4/3] overflow-hidden relative" style={{ background: 'var(--c-cream)' }}>
-        {img ? (
-          <img
-            src={img}
-            alt={product.name}
-            loading="lazy"
-            decoding="async"
-            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-          />
-        ) : (
-          <PlaceholderArt name={product.name} isPizza={product.is_pizza} />
-        )}
+        <img
+          src={img}
+          alt={product.name}
+          loading="lazy"
+          decoding="async"
+          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+        />
       </div>
       <div className="p-4">
         <h3 className="font-display text-[22px] leading-tight" style={{ color: 'var(--c-charcoal)' }}>
@@ -53,8 +57,7 @@ export default function ProductCard({ product, onQuickAdd }) {
             type="button"
             onClick={(e) => { e.preventDefault(); onQuickAdd?.(product) }}
             aria-label={`Adicionar ${product.name}`}
-            className="w-10 h-10 rounded-full flex items-center justify-center
-                       transition active:scale-95"
+            className="w-10 h-10 rounded-full flex items-center justify-center transition active:scale-95"
             style={{
               background: 'var(--c-ovenred)',
               color: 'var(--c-offwhite)',
