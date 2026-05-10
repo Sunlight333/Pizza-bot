@@ -10,7 +10,7 @@ from datetime import date
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
@@ -35,7 +35,10 @@ class Address(BaseModel):
 
 class ProfilePatch(BaseModel):
     name: Optional[str] = Field(default=None, max_length=120)
-    email: Optional[EmailStr] = None
+    # Plain str to avoid pulling email-validator into requirements; the
+    # field is optional and only used for the (deferred) email-receipt
+    # feature. Add basic validation if/when receipts ship.
+    email: Optional[str] = Field(default=None, max_length=255)
     birthday: Optional[date] = None
     marketing_opt_in: Optional[bool] = None
 
