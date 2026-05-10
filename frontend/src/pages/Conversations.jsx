@@ -6,7 +6,7 @@ import ConversationList from '@/components/conversations/ConversationList'
 import ChatViewer from '@/components/conversations/ChatViewer'
 import HumanTakeover from '@/components/conversations/HumanTakeover'
 import { conversationsApi } from '@/services/conversations'
-import { friendlyPhone, isAnonymousPhone } from '@/utils/customer'
+import { displayName, isAnonymousPhone } from '@/utils/customer'
 
 export default function Conversations() {
   const [selected, setSelected] = useState(null)
@@ -17,12 +17,23 @@ export default function Conversations() {
     refetchInterval: 10_000,
   })
 
+  // Recent (archived + active) — used to resolve the customer name for
+  // archived conversations, so the header still shows the saved pushName
+  // instead of falling through to "Anônimo · #<tail>".
+  const { data: recent = [] } = useQuery({
+    queryKey: ['conv-recent'],
+    queryFn: () => conversationsApi.recentPhones(30),
+    refetchInterval: 60_000,
+  })
+
   // Auto-select first active conversation if nothing selected
   useEffect(() => {
     if (!selected && active.length) setSelected(active[0].phone)
   }, [active, selected])
 
   const current = active.find((c) => c.phone === selected)
+  const recentRow = recent.find((r) => r.phone === selected)
+  const headerName = current?.customer_name || recentRow?.customer_name
 
   return (
     <AnimatedPage>
@@ -35,7 +46,7 @@ export default function Conversations() {
           <div className="px-4 py-3 border-b border-glass-border flex items-center justify-between">
             <div>
               <div className="font-display">
-                {current?.customer_name || friendlyPhone(selected) || 'Conversa'}
+                {selected ? displayName(headerName, selected) : 'Conversa'}
               </div>
               {selected && (
                 <div className="text-xs text-white/50">

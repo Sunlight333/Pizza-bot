@@ -4,7 +4,7 @@ import { MessageCircle, Clock, ShoppingBag } from 'lucide-react'
 
 import { conversationsApi, STATE_LABEL } from '@/services/conversations'
 import { ASSETS } from '@/utils/assets'
-import { friendlyPhone } from '@/utils/customer'
+import { displayName, friendlyPhone } from '@/utils/customer'
 
 const relTime = (iso) => {
   if (!iso) return ''
@@ -107,7 +107,7 @@ export default function ConversationList({ selectedPhone, onSelect }) {
                   selectedPhone === r.phone ? 'bg-primary/10' : 'hover:bg-white/5'
                 }`}
               >
-                <span className="text-white/60 truncate">{friendlyPhone(r.phone)}</span>
+                <span className="text-white/60 truncate">{displayName(r.customer_name, r.phone)}</span>
                 <span className="text-white/30">{relTime(r.last)}</span>
               </button>
             ))}

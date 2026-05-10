@@ -259,7 +259,12 @@ async def send_admin_media(
 
 @router.get("/recent-phones")
 async def recent_phones(limit: int = 30, db: AsyncSession = Depends(get_db)):
-    """Distinct phones with persisted history (regardless of active state)."""
+    """Distinct phones with persisted history, with the captured pushName.
+
+    The archived list in the conversations panel renders these — without the
+    customer_name field it falls back to "Anônimo · #<lid-tail>" even when
+    we already have the WhatsApp pushName saved on the customer row.
+    """
     res = await db.execute(
         select(
             ConversationMessage.phone,
@@ -269,4 +274,13 @@ async def recent_phones(limit: int = 30, db: AsyncSession = Depends(get_db)):
         .order_by(func.max(ConversationMessage.created_at).desc())
         .limit(limit)
     )
-    return [{"phone": p, "last": t.isoformat()} for p, t in res.all()]
+    rows = res.all()
+    phones = [p for p, _ in rows]
+    name_rows = await db.execute(
+        select(Customer.phone, Customer.name).where(Customer.phone.in_(phones))
+    )
+    name_by_phone = {p: n for p, n in name_rows.all()}
+    return [
+        {"phone": p, "last": t.isoformat(), "customer_name": name_by_phone.get(p)}
+        for p, t in rows
+    ]
