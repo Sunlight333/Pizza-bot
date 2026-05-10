@@ -341,6 +341,18 @@ function Nav() {
             Acesso da equipe
           </Link>
 
+          {/* Pedir online — direct link to the customer portal SPA, served
+              by host nginx at /pedir/. Hidden on the smallest screens to
+              keep room for the WhatsApp CTA, which is the established
+              path most customers already know. */}
+          <a
+            href="/pedir/"
+            className="hidden md:inline-flex items-center gap-1.5 text-sm font-semibold transition-colors hover:text-[var(--ovenred)] px-3 py-2 rounded-lg border"
+            style={{ color: 'var(--charcoal)', borderColor: 'rgba(31,24,21,0.15)' }}
+          >
+            Pedir online
+          </a>
+
           <WhatsAppLink className="btn-whatsapp text-sm px-4 py-2.5">
             <MessageCircle size={16} />
             <span className="hidden sm:inline">Pedir pelo WhatsApp</span>
@@ -418,11 +430,14 @@ function Hero() {
             <motion.div variants={fadeUp} className="mt-9 flex flex-wrap gap-3">
               <WhatsAppLink className="btn-whatsapp">
                 <MessageCircle size={18} />
-                Pedir agora pelo WhatsApp
+                Pedir pelo WhatsApp
                 <ArrowRight size={16} className="opacity-70" />
               </WhatsAppLink>
-              <a href="#cardapio" className="btn-outline">
-                Ver cardápio
+              {/* Pedir online — equal-weight alternative to WhatsApp, points
+                  at the customer portal at /pedir/. */}
+              <a href="/pedir/" className="btn-outline">
+                Pedir online
+                <ArrowRight size={16} className="opacity-70" />
               </a>
             </motion.div>
 

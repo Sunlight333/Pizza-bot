@@ -11,11 +11,11 @@ export default function AppLayout() {
   // Routes where we hide the top bar entirely (full-bleed pages)
   const hideTopBar = false
   // Routes where the sticky cart bar should NOT show (e.g. cart itself, checkout)
-  const noCartBar = ['/cart', '/checkout', '/login', '/login/verify', '/profile', '/profile/addresses']
+  const noCartBar = ['/cart', '/checkout', '/login', '/login/verify', '/register', '/profile', '/profile/addresses']
     .some(p => location.pathname === p || location.pathname.startsWith(p + '/'))
 
   // Routes where the bottom nav should be hidden (focus mode)
-  const noBottomNav = ['/checkout', '/login', '/login/verify'].includes(location.pathname)
+  const noBottomNav = ['/checkout', '/login', '/login/verify', '/register'].includes(location.pathname)
 
   const padBottom = noBottomNav ? '' : (itemCount > 0 && !noCartBar ? 'safe-bottom-cart' : 'safe-bottom')
 

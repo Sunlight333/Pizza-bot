@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { MessageCircle } from 'lucide-react'
 
@@ -16,7 +16,7 @@ export default function Login() {
   const next = params.get('next') || '/menu'
 
   const phone = normalizePhone(phoneRaw)
-  const valid = phone.length >= 12  // 55 + DDD + 8 digits
+  const valid = phone.length >= 12
 
   async function submit(e) {
     e?.preventDefault()
@@ -41,7 +41,7 @@ export default function Login() {
         </div>
         <h1 className="font-display text-display-lg">Entrar</h1>
         <p className="text-body text-slateMuted mt-2">
-          Vamos enviar um código de 6 dígitos pelo WhatsApp.
+          Digite seu telefone — vamos enviar um código de 6 dígitos no WhatsApp.
         </p>
       </div>
 
@@ -61,6 +61,16 @@ export default function Login() {
           Receber código
         </Button>
       </form>
+
+      <div className="mt-8 pt-6 border-t border-slateLine text-center">
+        <p className="text-body-sm text-slateMuted">Ainda não tem conta?</p>
+        <Link
+          to={`/register?next=${encodeURIComponent(next)}`}
+          className="inline-block mt-2 text-body font-semibold text-ovenred hover:underline"
+        >
+          Criar cadastro
+        </Link>
+      </div>
 
       <p className="text-body-sm text-slateMuted text-center mt-8">
         Ao continuar você concorda com nossos termos. Não enviamos

@@ -6,13 +6,16 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Map known backend error shapes ({detail: string}) to a thrown Error
-// with a customer-friendly message. Surfaces unexpected shapes verbatim.
+// Map known backend error shapes ({detail: string|object}) to a thrown
+// Error with a customer-friendly message. Preserves the structured detail
+// on err.response.data.detail so callers can act on it (e.g., the login
+// flow checks for needs_registration).
 api.interceptors.response.use(
   (r) => r,
   (err) => {
     const detail = err?.response?.data?.detail
-    if (detail) err.message = typeof detail === 'string' ? detail : JSON.stringify(detail)
+    if (typeof detail === 'string') err.message = detail
+    else if (detail?.message) err.message = detail.message
     return Promise.reject(err)
   },
 )
@@ -21,6 +24,7 @@ api.interceptors.response.use(
 export const auth = {
   requestOtp: (phone) => api.post('/customer/auth/request-otp', { phone }),
   verifyOtp: (phone, code) => api.post('/customer/auth/verify-otp', { phone, code }).then(r => r.data),
+  register: (body) => api.post('/customer/auth/register', body).then(r => r.data),
   logout: () => api.post('/customer/auth/logout'),
   me: () => api.get('/customer/auth/me').then(r => r.data),
 }

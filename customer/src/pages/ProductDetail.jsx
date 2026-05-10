@@ -11,14 +11,13 @@ import Pill from '@/components/Pill'
 import { LineSkeleton } from '@/components/Skeleton'
 import { brl } from '@/utils/format'
 import { computeLineTotal } from '@/utils/pricing'
-import { asset } from '@/utils/asset'
+import PlaceholderArt from '@/components/PlaceholderArt'
 
-const FALLBACK = asset('images/fallbacks/pizza-default-800.webp')
+const HIDDEN = '__hidden__'
 
-function resolveImage(p) {
-  const url = (p?.image_urls || [])[0]
-  if (!url) return FALLBACK
-  return url
+function realImageUrl(p) {
+  const urls = (p?.image_urls || []).filter((u) => u && u !== HIDDEN)
+  return urls[0] || null
 }
 
 export default function ProductDetail() {
@@ -97,14 +96,17 @@ export default function ProductDetail() {
 
   return (
     <div className="pb-32">
-      {/* Hero image */}
-      <div className="relative aspect-[16/10] md:aspect-[21/9] overflow-hidden">
-        <img
-          src={resolveImage(product)}
-          alt={product.name}
-          className="w-full h-full object-cover"
-          onError={(e) => { e.currentTarget.src = FALLBACK }}
-        />
+      {/* Hero image — real photo if uploaded in admin, branded placeholder otherwise */}
+      <div className="relative aspect-[16/10] md:aspect-[21/9] overflow-hidden bg-cream">
+        {realImageUrl(product) ? (
+          <img
+            src={realImageUrl(product)}
+            alt={product.name}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <PlaceholderArt name={product.name} isPizza={product.is_pizza} />
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-cream/95 via-cream/0 to-transparent" />
       </div>
 

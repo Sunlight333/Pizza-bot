@@ -8,14 +8,7 @@ import { useAuth } from '@/stores/auth'
 import Button from '@/components/Button'
 import EmptyState from '@/components/EmptyState'
 import { brl } from '@/utils/format'
-import { asset } from '@/utils/asset'
-
-const FALLBACK = asset('images/fallbacks/pizza-default-480.webp')
-
-function resolveImage(url) {
-  if (!url) return FALLBACK
-  return url
-}
+import PlaceholderArt from '@/components/PlaceholderArt'
 
 export default function Cart() {
   const navigate = useNavigate()
@@ -90,14 +83,17 @@ export default function Cart() {
       <div className="space-y-3">
         {items.map((it, idx) => (
           <div key={idx} className="card flex gap-3 p-3">
-            <div className="w-20 h-20 rounded-xl overflow-hidden bg-slateLine shrink-0">
-              <img
-                src={resolveImage(it.image_url)}
-                alt=""
-                loading="lazy"
-                className="w-full h-full object-cover"
-                onError={(e) => { e.currentTarget.src = FALLBACK }}
-              />
+            <div className="w-20 h-20 rounded-xl overflow-hidden bg-cream shrink-0">
+              {it.image_url ? (
+                <img
+                  src={it.image_url}
+                  alt=""
+                  loading="lazy"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <PlaceholderArt name={it.meta?.product_name || it.description} />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-body leading-tight">{it.description}</p>
