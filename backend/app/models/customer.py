@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import Boolean, Date, DateTime, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -25,6 +25,10 @@ class Customer(Base, TimestampMixin):
 
     # LGPD: privacy notice sent once per phone, then never again
     privacy_notice_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Optional, collected on the web-portal /profile page. Powers the
+    # deferred birthday-coupon job; harmless when absent.
+    birthday: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     orders = relationship("Order", back_populates="customer", lazy="selectin")
     conversations = relationship("Conversation", back_populates="customer", lazy="selectin")

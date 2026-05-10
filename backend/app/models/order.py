@@ -70,6 +70,11 @@ class Order(Base, TimestampMixin):
     delivery_lng: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)
     customer_phone: Mapped[str] = mapped_column(String(32), nullable=False)
 
+    # Where the order originated. 'whatsapp' (the legacy default) or 'web'
+    # (placed via the customer portal). Existing rows backfill to 'whatsapp'
+    # via the 0018 migration's server_default.
+    channel: Mapped[str] = mapped_column(String(16), default="whatsapp", nullable=False, index=True)
+
     observation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     datacaixa_synced: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)

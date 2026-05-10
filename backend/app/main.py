@@ -23,6 +23,7 @@ from app.api.routes import (
     orders,
     webhook,
 )
+from app.api.routes.customer import router as customer_router
 from app.config import settings
 from app.logging_config import configure as configure_logging
 from app.middleware.rate_limit import limiter
@@ -100,6 +101,7 @@ app.include_router(conversations.router, prefix="/api/conversations", tags=["con
 app.include_router(evolution.router, prefix="/api/evolution", tags=["evolution"])
 app.include_router(evolution.public_router, prefix="/api/evolution/public", tags=["evolution"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(customer_router, prefix="/api")
 
 # Uploaded product photos (see /api/menu/products/upload-image). The mount lives
 # next to the API so /media/products/<file>.jpg is served by the same origin

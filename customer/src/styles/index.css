@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --safe-bottom: env(safe-area-inset-bottom);
+  }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    @apply bg-cream text-charcoal antialiased;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: theme('colors.crust'); color: theme('colors.charcoal'); }
+  /* Visible focus ring — never hidden. */
+  :focus-visible {
+    outline: 2px solid theme('colors.charcoal');
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  button:focus-visible, a:focus-visible {
+    outline-color: theme('colors.ovenred');
+  }
+  /* iOS form input zoom prevention */
+  input, select, textarea { font-size: 16px; }
+  /* Tabular nums for prices */
+  .tabular { font-variant-numeric: tabular-nums; }
+
+  /* Hide scrollbars on horizontal-scroll category pills, but keep wheel scroll */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-6 h-12 rounded-xl
+           bg-ovenred text-offwhite font-semibold shadow-cta
+           transition-all duration-200 ease-std
+           hover:bg-ovenredDeep hover:shadow-cta-hover
+           active:scale-[0.98]
+           disabled:bg-slateLine disabled:text-slateMuted disabled:shadow-none disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-6 h-12 rounded-xl
+           bg-cream text-charcoal border border-crust font-semibold
+           transition-colors duration-200 ease-std hover:bg-crust/30
+           active:scale-[0.98];
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 h-10 rounded-lg
+           text-charcoal hover:bg-charcoal/5 transition-colors;
+  }
+  .pill {
+    @apply inline-flex items-center justify-center px-3.5 h-9 rounded-full
+           border border-slateLine bg-offwhite text-charcoal text-sm font-medium
+           transition-colors duration-150 ease-std cursor-pointer
+           hover:border-crust;
+  }
+  .pill-active {
+    @apply !bg-crust/30 !border-crust !font-semibold;
+  }
+  .pill-disabled {
+    @apply !bg-cream !text-slateMuted line-through cursor-not-allowed;
+  }
+  .input {
+    @apply w-full h-14 px-4 rounded-xl bg-offwhite border border-slateLine
+           text-charcoal placeholder:text-slateMuted
+           focus:outline-none focus:border-charcoal focus:border-2
+           transition-colors duration-150 ease-std;
+  }
+  .input-error {
+    @apply !border-danger !border-2;
+  }
+  .card {
+    @apply bg-offwhite rounded-xl shadow-soft overflow-hidden;
+  }
+  .card-tap {
+    @apply card transition-transform active:scale-[0.985] cursor-pointer;
+  }
+  .skeleton {
+    background: linear-gradient(90deg,
+      theme('colors.slateLine') 0%,
+      #F1F5F9 50%,
+      theme('colors.slateLine') 100%);
+    background-size: 1200px 100%;
+    animation: shimmer 1.6s linear infinite;
+    border-radius: 8px;
+  }
+  .label-eyebrow {
+    @apply text-label uppercase font-semibold text-slateMuted;
+  }
+}
+
+/* Safe-area aware bottom padding for fixed bottom nav */
+.safe-bottom { padding-bottom: calc(64px + var(--safe-bottom, 0px)); }
+.safe-bottom-cart { padding-bottom: calc(64px + 56px + var(--safe-bottom, 0px)); }

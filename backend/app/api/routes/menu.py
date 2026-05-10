@@ -450,6 +450,16 @@ def _sync_image_url(data: dict) -> None:
         data["image_url"] = urls[0] if urls else (data.get("image_url") or None)
 
 
+async def _invalidate_customer_menu_cache() -> None:
+    """Drop the customer-portal menu cache. Best-effort — never blocks
+    an admin write if Redis is down."""
+    try:
+        from app.api.routes.customer.menu import invalidate
+        await invalidate()
+    except Exception:
+        pass
+
+
 @router.post("/products", response_model=ProductOut, status_code=status.HTTP_201_CREATED)
 async def create_product(payload: ProductCreate, db: AsyncSession = Depends(get_db)):
     data = payload.model_dump()
@@ -459,6 +469,7 @@ async def create_product(payload: ProductCreate, db: AsyncSession = Depends(get_
     db.add(p)
     await db.commit()
     await db.refresh(p)
+    await _invalidate_customer_menu_cache()
     return p
 
 
@@ -475,6 +486,7 @@ async def update_product(prod_id: int, payload: ProductUpdate, db: AsyncSession 
         setattr(p, k, v)
     await db.commit()
     await db.refresh(p)
+    await _invalidate_customer_menu_cache()
     return p
 
 
@@ -485,3 +497,4 @@ async def delete_product(prod_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(404, "Product not found")
     p.is_active = False
     await db.commit()
+    await _invalidate_customer_menu_cache()

@@ -227,6 +227,12 @@ async def update_status_route(order_id: int, payload: OrderStatusUpdate, db: Asy
         raise HTTPException(400, str(e))
     data = _serialize_order(order)
     await manager.broadcast("status_change", data)
+    # Customer tracking page subscribes per-order — see services/customer_tracking.
+    try:
+        from app.services.customer_tracking import tracking_manager
+        await tracking_manager.notify(order.id, "status_change", data)
+    except Exception:
+        pass
     return data
 
 

@@ -14,9 +14,18 @@ cd "$PROJECT_DIR"
 echo "[deploy] git pull"
 git pull --ff-only
 
-echo "[deploy] building frontend"
+echo "[deploy] building admin frontend"
 docker run --rm -v "$PROJECT_DIR/frontend":/app -w /app node:20-alpine \
   sh -c "npm ci --no-audit --no-fund && npm run build"
+
+# Customer portal — separate Vite app served by host nginx at /pedir/
+# (see /etc/nginx/sites-enabled/planaltopizzasesorvetes for the location
+# block). dist/ is read directly from the host filesystem; no container.
+if [ -d "$PROJECT_DIR/customer" ]; then
+  echo "[deploy] building customer portal"
+  docker run --rm -v "$PROJECT_DIR/customer":/app -w /app node:20-alpine \
+    sh -c "npm ci --no-audit --no-fund && npm run build"
+fi
 
 echo "[deploy] rebuilding backend image"
 $COMPOSE build backend

@@ -4,6 +4,8 @@ from app.models.category import Category
 from app.models.conversation import Conversation, ConversationState
 from app.models.conversation_message import ConversationMessage, MessageRole
 from app.models.customer import Customer
+from app.models.customer_account import CustomerAccount
+from app.models.customer_cart import CustomerCart
 from app.models.delivery_zone import DeliveryZone
 from app.models.order import Order, OrderStatus, PaymentMethod
 from app.models.order_item import OrderItem
@@ -19,6 +21,8 @@ __all__ = [
     "ConversationMessage",
     "ConversationState",
     "Customer",
+    "CustomerAccount",
+    "CustomerCart",
     "DeliveryZone",
     "MessageRole",
     "Order",
