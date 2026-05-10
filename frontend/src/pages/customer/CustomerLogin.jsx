@@ -1,42 +1,37 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { MessageCircle } from 'lucide-react'
+import { LogIn } from 'lucide-react'
 
 import Button from '@/components/customer/Button'
 import Input from '@/components/customer/Input'
 import { auth } from '@/services/customerApi'
-import { formatPhoneInput, normalizePhone, isValidPhone } from '@/utils/customer/phone'
 
 export default function CustomerLogin() {
-  const [phoneRaw, setPhoneRaw] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const next = params.get('next') || '/cardapio'
 
-  const phone = normalizePhone(phoneRaw)
-  const valid = isValidPhone(phoneRaw)
-  const digitsCount = (phoneRaw || '').replace(/\D/g, '').length
-  const tooShort = digitsCount > 0 && digitsCount < 11
-  const wrongPrefix = digitsCount === 11 && phoneRaw.replace(/\D/g, '')[2] !== '9'
-  const hint =
-    tooShort
-      ? 'Digite seu DDD + número (11 dígitos com o 9 inicial)'
-      : wrongPrefix
-        ? 'Celulares brasileiros têm um 9 logo após o DDD'
-        : 'Mesmo número que você usa no WhatsApp'
+  const valid = email.includes('@') && password.length >= 1
 
   async function submit(e) {
     e?.preventDefault()
     if (!valid) return
     setLoading(true)
     try {
-      await auth.requestOtp(phone)
-      toast.success('Código enviado pelo WhatsApp')
-      navigate(`/login/verify?phone=${encodeURIComponent(phone)}&next=${encodeURIComponent(next)}`)
+      const { token, phone_hint } = await auth.login(email.trim().toLowerCase(), password)
+      // OTP sent — go to verify with the intent token. Phone hint is
+      // shown so the user knows where the code went without exposing
+      // the full number.
+      navigate(
+        `/login/verify?next=${encodeURIComponent(next)}&mode=login`,
+        { state: { token, phoneHint: phone_hint } },
+      )
     } catch (e) {
-      toast.error(e?.message || 'Falha ao enviar código')
+      toast.error(e?.message || 'Falha ao entrar')
     } finally {
       setLoading(false)
     }
@@ -46,29 +41,37 @@ export default function CustomerLogin() {
     <div className="max-w-md mx-auto px-5 py-10">
       <div className="text-center mb-8">
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-full mb-4"
-             style={{ background: 'rgba(90,122,44,0.10)', color: 'var(--c-basil)' }}>
-          <MessageCircle className="w-7 h-7" />
+             style={{ background: 'rgba(139,26,26,0.10)', color: 'var(--c-ovenred)' }}>
+          <LogIn className="w-7 h-7" />
         </div>
         <h1 className="font-display text-3xl">Entrar</h1>
         <p className="text-base mt-2" style={{ color: 'var(--c-slate-muted)' }}>
-          Digite seu telefone — vamos enviar um código de 6 dígitos no WhatsApp.
+          Use seu e-mail e senha. Enviaremos um código de confirmação no WhatsApp.
         </p>
       </div>
 
       <form onSubmit={submit} className="space-y-4">
         <Input
-          name="phone"
-          label="Seu telefone"
-          type="tel"
-          inputMode="tel"
-          autoComplete="tel"
-          value={formatPhoneInput(phoneRaw)}
-          onChange={(e) => setPhoneRaw(e.target.value)}
-          placeholder="(43) 99999-9999"
-          hint={hint}
+          name="email"
+          label="E-mail"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="seu@email.com"
+        />
+        <Input
+          name="password"
+          label="Senha"
+          type="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="••••••••"
         />
         <Button type="submit" fullWidth loading={loading} disabled={!valid}>
-          Receber código
+          Entrar
         </Button>
       </form>
 
@@ -84,8 +87,8 @@ export default function CustomerLogin() {
       </div>
 
       <p className="text-[13px] text-center mt-8" style={{ color: 'var(--c-slate-muted)' }}>
-        Ao continuar você concorda com nossos termos. Não enviamos
-        promoção sem você marcar a opção no perfil.
+        Após o login, enviaremos um código de 6 dígitos pelo WhatsApp
+        para confirmar que é você.
       </p>
     </div>
   )

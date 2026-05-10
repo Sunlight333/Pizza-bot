@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { UserPlus } from 'lucide-react'
+import { UserPlus, Eye, EyeOff } from 'lucide-react'
 
 import Button from '@/components/customer/Button'
 import Input from '@/components/customer/Input'
@@ -10,8 +10,10 @@ import { formatPhoneInput, normalizePhone, isValidPhone } from '@/utils/customer
 
 export default function CustomerRegister() {
   const [name, setName] = useState('')
-  const [phoneRaw, setPhoneRaw] = useState('')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPwd, setShowPwd] = useState(false)
+  const [phoneRaw, setPhoneRaw] = useState('')
   const [optIn, setOptIn] = useState(true)
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
@@ -19,7 +21,12 @@ export default function CustomerRegister() {
   const next = params.get('next') || '/cardapio'
 
   const phone = normalizePhone(phoneRaw)
-  const valid = name.trim().length >= 2 && isValidPhone(phoneRaw)
+  const validPhone = isValidPhone(phoneRaw)
+  const validEmail = email.includes('@') && email.includes('.')
+  const validPwd = password.length >= 8
+  const validName = name.trim().length >= 2
+  const valid = validName && validEmail && validPwd && validPhone
+
   const digitsCount = (phoneRaw || '').replace(/\D/g, '').length
   const tooShort = digitsCount > 0 && digitsCount < 11
   const wrongPrefix = digitsCount === 11 && phoneRaw.replace(/\D/g, '')[2] !== '9'
@@ -30,27 +37,31 @@ export default function CustomerRegister() {
         ? 'Celulares brasileiros têm um 9 logo após o DDD'
         : 'Vamos enviar um código de confirmação aqui'
 
+  const pwdHint =
+    password.length === 0
+      ? 'Mínimo 8 caracteres'
+      : password.length < 8
+        ? `Mais ${8 - password.length} caractere(s)`
+        : 'Senha aceita ✓'
+
   async function submit(e) {
     e?.preventDefault()
     if (!valid) return
     setLoading(true)
     try {
-      await auth.requestOtp(phone)
-      toast.success('Código enviado pelo WhatsApp')
+      const { token, phone_hint } = await auth.register({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+        phone,
+        marketing_opt_in: optIn,
+      })
       navigate(
-        `/login/verify?phone=${encodeURIComponent(phone)}&next=${encodeURIComponent(next)}&mode=register`,
-        {
-          state: {
-            register: {
-              name: name.trim(),
-              email: email.trim() || null,
-              marketing_opt_in: optIn,
-            },
-          },
-        },
+        `/login/verify?next=${encodeURIComponent(next)}&mode=register`,
+        { state: { token, phoneHint: phone_hint } },
       )
     } catch (e) {
-      toast.error(e?.message || 'Falha ao enviar código')
+      toast.error(e?.message || 'Falha ao cadastrar')
     } finally {
       setLoading(false)
     }
@@ -80,6 +91,37 @@ export default function CustomerRegister() {
           placeholder="Seu nome"
         />
         <Input
+          name="email"
+          label="E-mail"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="seu@email.com"
+        />
+        <div className="relative">
+          <Input
+            name="password"
+            label="Senha"
+            type={showPwd ? 'text' : 'password'}
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            hint={pwdHint}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPwd(!showPwd)}
+            aria-label={showPwd ? 'Ocultar senha' : 'Mostrar senha'}
+            className="absolute right-3 top-[42px] p-2 rounded-lg"
+            style={{ color: 'var(--c-slate-muted)' }}
+          >
+            {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
+        <Input
           name="phone"
           label="WhatsApp"
           type="tel"
@@ -89,15 +131,6 @@ export default function CustomerRegister() {
           onChange={(e) => setPhoneRaw(e.target.value)}
           placeholder="(43) 99999-9999"
           hint={phoneHint}
-        />
-        <Input
-          name="email"
-          label="E-mail (opcional)"
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="só para receber recibo"
         />
 
         <label className="c-card p-4 flex items-start gap-3 cursor-pointer">

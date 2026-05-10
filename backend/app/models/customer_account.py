@@ -25,8 +25,16 @@ class CustomerAccount(Base, TimestampMixin):
         index=True,
     )
 
-    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Email is now the primary login credential (replaces phone-only OTP).
+    # Unique when present; nullable for the brief window between migration
+    # 0019 running and a legacy account first logging in (which forces
+    # them to set an email + password). New registrations always set both.
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # bcrypt hash of the customer's password. Customer login is two-factor:
+    # email+password verifies the credential, then a WhatsApp OTP step
+    # (sent to customer.phone) authorizes the session.
+    password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     marketing_opt_in: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 

@@ -37,11 +37,25 @@ client.interceptors.response.use(
 )
 
 // ---------- auth ----------
+//
+// Two-step flow:
+//   login(email, password) → { token, phone_hint }    OTP sent to phone
+//   loginVerify(token, code)                        → sets cookie, returns customer
+// register({ name, email, password, phone, marketing_opt_in })
+//                              → { token, phone_hint }    OTP sent to phone
+//   registerVerify(token, code)                       → creates account + cookie
+// resendOtp(token)             → re-issue the same intent's OTP
 export const auth = {
-  requestOtp: (phone) => client.post('/api/customer/auth/request-otp', { phone }),
-  verifyOtp: (phone, code) =>
-    client.post('/api/customer/auth/verify-otp', { phone, code }).then((r) => r.data),
-  register: (body) => client.post('/api/customer/auth/register', body).then((r) => r.data),
+  login: (email, password) =>
+    client.post('/api/customer/auth/login', { email, password }).then((r) => r.data),
+  loginVerify: (token, code) =>
+    client.post('/api/customer/auth/login/verify', { token, code }).then((r) => r.data),
+  register: (body) =>
+    client.post('/api/customer/auth/register', body).then((r) => r.data),
+  registerVerify: (token, code) =>
+    client.post('/api/customer/auth/register/verify', { token, code }).then((r) => r.data),
+  resendOtp: (token) =>
+    client.post('/api/customer/auth/resend-otp', { token }),
   logout: () => client.post('/api/customer/auth/logout'),
   me: () => client.get('/api/customer/auth/me').then((r) => r.data),
 }

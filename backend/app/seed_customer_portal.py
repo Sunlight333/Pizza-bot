@@ -51,6 +51,7 @@ from app.models.customer import Customer
 from app.models.customer_account import CustomerAccount
 from app.services import otp as otp_service
 from app.utils.customer_security import create_customer_token
+from app.utils.security import hash_password
 
 
 # --- Demo accounts -------------------------------------------------------
@@ -58,11 +59,16 @@ from app.utils.customer_security import create_customer_token
 # 5517 area code (matches the pizzaria's own region — São José do Rio
 # Preto). The "dev" 0000-0001..0004 numbers are unlikely to collide with
 # any real customer, so seeding is safe in prod.
+#
+# All demo accounts share the SAME default password so the operator
+# only has to remember one. Override per-account by editing `password`.
+DEMO_PASSWORD = "demo1234"
+
 DEMO_ACCOUNTS = [
     {
         "phone": "5517900000001",
         "name": "Cliente Teste",
-        "email": None,
+        "email": "cliente.teste@example.com",
         "marketing_opt_in": True,
         "addresses": [
             {
@@ -105,7 +111,7 @@ DEMO_ACCOUNTS = [
     {
         "phone": "5517900000003",
         "name": "João da Pizza",
-        "email": None,
+        "email": "joao.pizza@example.com",
         "marketing_opt_in": False,
         "addresses": [
             {
@@ -122,7 +128,7 @@ DEMO_ACCOUNTS = [
     {
         "phone": "5517900000004",
         "name": "Fresh — Sem Pedidos",
-        "email": None,
+        "email": "fresh@example.com",
         "marketing_opt_in": False,
         # No saved addresses — useful for testing the "no address yet"
         # checkout path.
@@ -159,10 +165,12 @@ async def _seed() -> None:
                     select(CustomerAccount).where(CustomerAccount.customer_id == customer.id)
                 )
             ).scalar_one_or_none()
+            pwd = hash_password(DEMO_PASSWORD)
             if account is None:
                 account = CustomerAccount(
                     customer_id=customer.id,
                     email=entry["email"],
+                    password_hash=pwd,
                     marketing_opt_in=entry["marketing_opt_in"],
                     last_login_at=datetime.now(timezone.utc),
                 )
@@ -170,6 +178,7 @@ async def _seed() -> None:
                 created_account = True
             else:
                 account.email = entry["email"]
+                account.password_hash = pwd
                 account.marketing_opt_in = entry["marketing_opt_in"]
                 created_account = False
 
@@ -185,13 +194,15 @@ async def _seed() -> None:
                 f"opt_in={entry['marketing_opt_in']}"
             )
 
-    print("\ncustomer-portal seed complete\n")
-    print("Sign in to the portal with one of these phones.\n")
-    print("Two options to log in:")
-    print("  a) Use the normal flow at /pedir/login — but the OTP goes")
-    print("     to the demo phone (which doesn't exist), so use option b.")
-    print("  b) Print a session token here and paste it into your browser:")
-    print("       python -m app.seed_customer_portal token 5517900000001\n")
+    print(f"\ncustomer-portal seed complete (password = {DEMO_PASSWORD!r})\n")
+    print("Login credentials for the customer portal:")
+    for e in DEMO_ACCOUNTS:
+        print(f"  email: {e['email']:30s}  password: {DEMO_PASSWORD}")
+    print("\nNote: login also requires a WhatsApp OTP step — the demo")
+    print("phones (5517900000001..04) don't exist on WhatsApp, so use")
+    print("the `token` subcommand to get a session JWT and bypass the")
+    print("OTP step entirely:\n")
+    print("  python -m app.seed_customer_portal token 5517900000001\n")
 
 
 # --- Print session token -------------------------------------------------

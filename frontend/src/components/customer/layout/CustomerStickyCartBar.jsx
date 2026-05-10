@@ -10,9 +10,9 @@ export default function CustomerStickyCartBar() {
   return (
     <Link
       to="/sacola"
-      className="fixed left-0 right-0 z-30 md:hidden h-14 flex items-center justify-between px-5 transition-transform"
+      className="fixed left-0 right-0 md:left-60 z-30 h-14 flex items-center justify-between px-5 transition-transform"
       style={{
-        bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))',
+        bottom: 'env(safe-area-inset-bottom, 0px)',
         background: 'var(--c-ovenred)',
         color: 'var(--c-offwhite)',
         boxShadow: '0 -8px 24px -12px rgba(31,24,21,0.25)',

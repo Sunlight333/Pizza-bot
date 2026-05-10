@@ -60,16 +60,22 @@ export default function App() {
 
       {/* ---------- Customer Portal ----------
           Wrapped in CustomerLayout so they share the cream/charcoal/oven-red
-          theme, top bar, bottom nav, and sticky cart bar. */}
+          theme, top bar, sidebar, and sticky cart bar.
+
+          Auth gating: per the spec, EVERY action requires login. Only the
+          three auth pages (/login, /register, /login/verify) are public
+          inside the layout. The browse routes (/cardapio, /produto, /sacola)
+          are inside <CustomerProtectedRoute> so unauthed visitors get
+          bounced to /login with a `next=` param. */}
       <Route element={<CustomerLayout />}>
         <Route path="/login" element={<CustomerLogin />} />
         <Route path="/register" element={<CustomerRegister />} />
         <Route path="/login/verify" element={<CustomerOTPVerify />} />
-        <Route path="/cardapio" element={<CustomerMenu />} />
-        <Route path="/produto/:productId" element={<CustomerProductDetail />} />
-        <Route path="/sacola" element={<CustomerCart />} />
 
         <Route element={<CustomerProtectedRoute />}>
+          <Route path="/cardapio" element={<CustomerMenu />} />
+          <Route path="/produto/:productId" element={<CustomerProductDetail />} />
+          <Route path="/sacola" element={<CustomerCart />} />
           <Route path="/checkout" element={<CustomerCheckout />} />
           <Route path="/pedidos" element={<CustomerOrders />} />
           <Route path="/pedidos/:orderId" element={<CustomerOrderDetail />} />

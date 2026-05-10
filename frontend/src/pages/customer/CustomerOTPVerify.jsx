@@ -8,26 +8,35 @@ import { auth } from '@/services/customerApi'
 import { useCustomerAuth } from '@/stores/customerAuth'
 import { useCustomerCart } from '@/stores/customerCart'
 
+/**
+ * Second factor of customer auth: WhatsApp OTP code.
+ *
+ * Receives `token` + `phoneHint` via location.state from /login or
+ * /register. Calls login/verify or register/verify depending on `mode`.
+ * If location.state is missing (page refresh / direct hit), bounces
+ * back to the appropriate first-step page.
+ */
 export default function CustomerOTPVerify() {
   const navigate = useNavigate()
   const location = useLocation()
   const [params] = useSearchParams()
-  const phone = params.get('phone') || ''
   const next = params.get('next') || '/cardapio'
   const mode = params.get('mode') || 'login'
-  const registerData = location.state?.register || null
+  const token = location.state?.token || ''
+  const phoneHint = location.state?.phoneHint || ''
 
   const [verifying, setVerifying] = useState(false)
   const [resendIn, setResendIn] = useState(30)
   const setCustomer = useCustomerAuth((s) => s.setCustomer)
   const onLoginCart = useCustomerCart((s) => s.onLogin)
 
+  // Bounce if we don't have an intent token (e.g. user refreshed).
   useEffect(() => {
-    if (!phone) navigate(mode === 'register' ? '/register' : '/login', { replace: true })
-    if (mode === 'register' && !registerData) {
-      navigate(`/register?next=${encodeURIComponent(next)}`, { replace: true })
+    if (!token) {
+      const fallback = mode === 'register' ? '/register' : '/login'
+      navigate(`${fallback}?next=${encodeURIComponent(next)}`, { replace: true })
     }
-  }, [phone, mode, registerData, navigate, next])
+  }, [token, mode, navigate, next])
 
   useEffect(() => {
     if (resendIn <= 0) return
@@ -36,21 +45,12 @@ export default function CustomerOTPVerify() {
   }, [resendIn])
 
   async function complete(code) {
-    if (verifying) return
+    if (verifying || !token) return
     setVerifying(true)
     try {
-      let res
-      if (mode === 'register') {
-        res = await auth.register({
-          phone,
-          code,
-          name: registerData.name,
-          email: registerData.email || undefined,
-          marketing_opt_in: registerData.marketing_opt_in,
-        })
-      } else {
-        res = await auth.verifyOtp(phone, code)
-      }
+      const res = mode === 'register'
+        ? await auth.registerVerify(token, code)
+        : await auth.loginVerify(token, code)
       setCustomer(res.customer)
       try { await onLoginCart() } catch {}
       const welcome = mode === 'register'
@@ -61,21 +61,15 @@ export default function CustomerOTPVerify() {
       toast.success(welcome)
       navigate(next, { replace: true })
     } catch (e) {
-      const detail = e?.response?.data?.detail
-      if (mode === 'login' && detail?.needs_registration) {
-        toast('Você ainda não tem cadastro — vamos criar agora.', { icon: '👋' })
-        navigate(`/register?next=${encodeURIComponent(next)}`, { replace: true })
-        return
-      }
       toast.error(e?.message || 'Código inválido')
       setVerifying(false)
     }
   }
 
   async function resend() {
-    if (resendIn > 0) return
+    if (resendIn > 0 || !token) return
     try {
-      await auth.requestOtp(phone)
+      await auth.resendOtp(token)
       toast.success('Novo código enviado')
       setResendIn(30)
     } catch (e) {
@@ -90,7 +84,7 @@ export default function CustomerOTPVerify() {
           {mode === 'register' ? 'Confirmar telefone' : 'Digite o código'}
         </h1>
         <p className="text-base mt-2" style={{ color: 'var(--c-slate-muted)' }}>
-          Enviamos 6 dígitos para {formatPhoneDisplay(phone)} no WhatsApp.
+          Enviamos 6 dígitos para {phoneHint || 'seu WhatsApp'}.
         </p>
       </div>
 
@@ -112,21 +106,9 @@ export default function CustomerOTPVerify() {
           variant="ghost"
           onClick={() => navigate(mode === 'register' ? '/register' : '/login')}
         >
-          Trocar telefone
+          Voltar
         </Button>
       </div>
     </div>
   )
-}
-
-function formatPhoneDisplay(phone) {
-  if (!phone) return ''
-  const d = phone.replace(/\D/g, '')
-  if (d.length < 12) return phone
-  const country = d.slice(0, 2)
-  const ddd = d.slice(2, 4)
-  const rest = d.slice(4)
-  const a = rest.length > 4 ? rest.slice(0, rest.length - 4) : rest
-  const b = rest.length > 4 ? rest.slice(-4) : ''
-  return `+${country} ${ddd} ${a}${b ? '-' + b : ''}`
 }
