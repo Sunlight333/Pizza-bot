@@ -108,15 +108,28 @@ async def _verify_otp_or_raise(phone: str, code: str) -> None:
 @router.post("/request-otp", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("5/hour")
 async def request_otp(request: Request, body: RequestOTPBody):
-    """Send a WhatsApp OTP. Always 204 — never reveal whether the phone
-    is registered (anti-enumeration). Failed sends still return 204; the
-    server logs the error."""
+    """Send a WhatsApp OTP.
+
+    Returns 204 on success and on "phone exists but send failed" so we
+    don't leak whether a phone is registered. Format errors (not a
+    Brazilian mobile, missing 9 prefix) get a 400 with a clear message
+    — that isn't enumeration, it's just "your number can't possibly
+    receive WhatsApp."
+    """
     phone = otp_service.normalize_phone(body.phone)
     if not phone:
-        return
+        # Bad format — not enumeration-sensitive, surface a useful error.
+        raise HTTPException(
+            400,
+            "Telefone inválido. Use o formato (DDD) 9XXXX-XXXX — "
+            "celulares brasileiros têm 9 dígitos depois do DDD.",
+        )
     try:
         await otp_service.generate_and_send(phone)
     except Exception:
+        # Logged in the service. Customer sees 204; phone is real-format
+        # so we still don't reveal whether it's registered or whether
+        # WhatsApp is reachable.
         pass
 
 

@@ -6,7 +6,7 @@ import { MessageCircle } from 'lucide-react'
 import Button from '@/components/customer/Button'
 import Input from '@/components/customer/Input'
 import { auth } from '@/services/customerApi'
-import { formatPhoneInput, normalizePhone } from '@/utils/customer/phone'
+import { formatPhoneInput, normalizePhone, isValidPhone } from '@/utils/customer/phone'
 
 export default function CustomerLogin() {
   const [phoneRaw, setPhoneRaw] = useState('')
@@ -16,7 +16,16 @@ export default function CustomerLogin() {
   const next = params.get('next') || '/cardapio'
 
   const phone = normalizePhone(phoneRaw)
-  const valid = phone.length >= 12
+  const valid = isValidPhone(phoneRaw)
+  const digitsCount = (phoneRaw || '').replace(/\D/g, '').length
+  const tooShort = digitsCount > 0 && digitsCount < 11
+  const wrongPrefix = digitsCount === 11 && phoneRaw.replace(/\D/g, '')[2] !== '9'
+  const hint =
+    tooShort
+      ? 'Digite seu DDD + número (11 dígitos com o 9 inicial)'
+      : wrongPrefix
+        ? 'Celulares brasileiros têm um 9 logo após o DDD'
+        : 'Mesmo número que você usa no WhatsApp'
 
   async function submit(e) {
     e?.preventDefault()
@@ -55,8 +64,8 @@ export default function CustomerLogin() {
           autoComplete="tel"
           value={formatPhoneInput(phoneRaw)}
           onChange={(e) => setPhoneRaw(e.target.value)}
-          placeholder="(11) 99999-9999"
-          hint="Mesmo número que você usa no WhatsApp"
+          placeholder="(43) 99999-9999"
+          hint={hint}
         />
         <Button type="submit" fullWidth loading={loading} disabled={!valid}>
           Receber código

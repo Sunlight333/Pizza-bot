@@ -6,7 +6,7 @@ import { UserPlus } from 'lucide-react'
 import Button from '@/components/customer/Button'
 import Input from '@/components/customer/Input'
 import { auth } from '@/services/customerApi'
-import { formatPhoneInput, normalizePhone } from '@/utils/customer/phone'
+import { formatPhoneInput, normalizePhone, isValidPhone } from '@/utils/customer/phone'
 
 export default function CustomerRegister() {
   const [name, setName] = useState('')
@@ -19,7 +19,16 @@ export default function CustomerRegister() {
   const next = params.get('next') || '/cardapio'
 
   const phone = normalizePhone(phoneRaw)
-  const valid = name.trim().length >= 2 && phone.length >= 12
+  const valid = name.trim().length >= 2 && isValidPhone(phoneRaw)
+  const digitsCount = (phoneRaw || '').replace(/\D/g, '').length
+  const tooShort = digitsCount > 0 && digitsCount < 11
+  const wrongPrefix = digitsCount === 11 && phoneRaw.replace(/\D/g, '')[2] !== '9'
+  const phoneHint =
+    tooShort
+      ? 'Digite seu DDD + número (11 dígitos com o 9 inicial)'
+      : wrongPrefix
+        ? 'Celulares brasileiros têm um 9 logo após o DDD'
+        : 'Vamos enviar um código de confirmação aqui'
 
   async function submit(e) {
     e?.preventDefault()
@@ -78,8 +87,8 @@ export default function CustomerRegister() {
           autoComplete="tel"
           value={formatPhoneInput(phoneRaw)}
           onChange={(e) => setPhoneRaw(e.target.value)}
-          placeholder="(11) 99999-9999"
-          hint="Vamos enviar um código de confirmação aqui"
+          placeholder="(43) 99999-9999"
+          hint={phoneHint}
         />
         <Input
           name="email"

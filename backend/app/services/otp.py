@@ -44,14 +44,36 @@ def _key(phone: str) -> str:
 
 
 def normalize_phone(raw: str) -> str:
-    """Digits-only. Adds '55' country prefix when caller passed a 10/11-digit
-    Brazilian number without it. Returns '' for unparseable input."""
+    """Digits-only Brazilian mobile in international format (5511999999999).
+
+    Brazil mobile = 2-digit DDD + 9-digit local (1 prefix + 8 number) =
+    11 local digits, 13 international. Landlines (10 local) and any other
+    length aren't valid WhatsApp targets, so the OTP send would fail
+    silently — better to reject up front and let the UI explain.
+
+    Accepts:
+      11 digits raw   → assume DDD+mobile, prepend 55                (normal case)
+      13 digits raw   → already international (must start with 55)   (paste case)
+      12 digits raw starting with 55 → operator pasted the legacy
+        10-digit landline format with country code prepended; reject
+        (no leading 9 = not a mobile = no WhatsApp).
+
+    Returns '' for anything else.
+    """
     digits = re.sub(r"\D", "", raw or "")
     if not digits:
         return ""
-    if len(digits) in (10, 11):
-        digits = "55" + digits
-    return digits
+    if len(digits) == 11:
+        # 11 local digits: DDD (2) + mobile (9). Must be a mobile (9-prefix).
+        if digits[2] != "9":
+            return ""
+        return "55" + digits
+    if len(digits) == 13 and digits.startswith("55"):
+        # Already international. Must still be a mobile (9 in position 4).
+        if digits[4] != "9":
+            return ""
+        return digits
+    return ""
 
 
 def _gen_code() -> str:
