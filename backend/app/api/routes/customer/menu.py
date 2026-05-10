@@ -5,9 +5,21 @@ shape the customer site renders directly: categories grouped, with each
 product's sizes / crusts / extras ready to display, fiscal fields
 stripped (NCM/CFOP/CSOSN/etc — never leaked to a public endpoint).
 
-Cached in Redis for 60s under `menu:public`. The cache is invalidated
-explicitly by admin product/category writes — see invalidate() below;
-hook it into app/api/routes/menu.py product mutators.
+Image resolution priority (matches the admin Menu page so what the
+operator sees in admin matches what the customer sees on the portal):
+  1. Per-product photo: Product.image_urls[0] (or legacy Product.image_url)
+  2. Per-category fallback: BotConfig.menu_images[<category-key>] —
+     operators upload one photo per category in Settings → Menu Images;
+     the bot's send_menu_image tool uses the same map. Most pizzarias
+     only set the category fallback, so without this every photoless
+     product would render as a generic placeholder even though the
+     operator did upload a photo.
+  3. Empty list → frontend renders PlaceholderArt (initials on a
+     deterministic warm gradient).
+
+Cached in Redis for 60s under `customer:menu:public`. Invalidated on
+admin product/category writes (see invalidate() below). Bot-config
+edits also invalidate via the bot_config write endpoint.
 """
 from __future__ import annotations
 
@@ -21,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
+from app.models.bot_config import BotConfig
 from app.models.category import Category
 from app.models.product import Product
 
@@ -46,22 +59,59 @@ def _client() -> redis.Redis:
 
 
 async def invalidate() -> None:
-    """Drop the cached menu. Call from admin product/category write
-    endpoints so customer-side updates appear within seconds."""
+    """Drop the cached menu. Call from any admin endpoint that mutates
+    products, categories, or bot_config.menu_images so customer-side
+    updates appear within seconds."""
     try:
         await _client().delete(CACHE_KEY)
     except Exception:
         log.exception("menu cache invalidation failed")
 
 
-def _resolve_image_urls(p: Product) -> list[str]:
+# Map a category name to the bot_config.menu_images key the operator
+# uploads under. Same heuristic as the admin frontend's pizzaImage()
+# helper so the two views stay consistent.
+def _category_image_key(category_name: str) -> Optional[str]:
+    n = (category_name or "").lower()
+    # Order matters — "doce" must win before the generic "pizza" fallback
+    # for "Pizzas Doces".
+    if "doce" in n:
+        return "doce"
+    if "sorvete" in n:
+        return "sorvete"
+    if "bebida" in n:
+        return "bebida"
+    if "salgada" in n or "pizza" in n:
+        return "salgada"
+    return None
+
+
+def _resolve_image_urls(p: Product, category_name: str, menu_images: dict) -> list[str]:
+    # 1. Per-product photo
     urls = [u for u in (p.image_urls or []) if u and u != HIDDEN]
     if not urls and p.image_url and p.image_url != HIDDEN:
         urls = [p.image_url]
-    return urls
+    if urls:
+        return urls
+
+    # Honor "explicitly hidden" — operator chose to suppress the image.
+    # In that case skip the category fallback too; render PlaceholderArt
+    # on the client.
+    if p.image_url == HIDDEN:
+        return []
+
+    # 2. Per-category fallback from bot_config.menu_images
+    key = _category_image_key(category_name)
+    if key and isinstance(menu_images, dict):
+        fallback = menu_images.get(key)
+        if fallback:
+            return [fallback]
+
+    # 3. Nothing — client renders branded placeholder
+    return []
 
 
-def _serialize_product(p: Product) -> dict:
+def _serialize_product(p: Product, category_name: str, menu_images: dict) -> dict:
     sizes = []
     for s in (p.sizes or []):
         if not isinstance(s, dict):
@@ -101,8 +151,15 @@ def _serialize_product(p: Product) -> dict:
         "min_price": min((s["price"] for s in sizes if s["price"] > 0), default=0.0),
         "available_crusts": [_opt(c) for c in (p.available_crusts or [])],
         "available_extras": [_opt(e) for e in (p.available_extras or [])],
-        "image_urls": _resolve_image_urls(p),
+        "image_urls": _resolve_image_urls(p, category_name, menu_images),
     }
+
+
+async def _load_menu_images(db: AsyncSession) -> dict:
+    cfg = (
+        await db.execute(select(BotConfig).where(BotConfig.id == 1))
+    ).scalar_one_or_none()
+    return dict(cfg.menu_images or {}) if cfg else {}
 
 
 @router.get("")
@@ -122,17 +179,24 @@ async def get_menu(db: AsyncSession = Depends(get_db)):
         .where(Category.is_active.is_(True))
         .order_by(Category.display_order, Category.id)
     )
+    cats = list(cats_res.scalars().all())
     categories = [
         {"id": c.id, "name": c.name, "display_order": c.display_order}
-        for c in cats_res.scalars().all()
+        for c in cats
     ]
+    cat_name_by_id = {c.id: c.name for c in cats}
+
+    menu_images = await _load_menu_images(db)
 
     prods_res = await db.execute(
         select(Product)
         .where(Product.is_active.is_(True))
         .order_by(Product.category_id, Product.name)
     )
-    products = [_serialize_product(p) for p in prods_res.scalars().all()]
+    products = [
+        _serialize_product(p, cat_name_by_id.get(p.category_id, ""), menu_images)
+        for p in prods_res.scalars().all()
+    ]
     payload = {"categories": categories, "products": products}
 
     try:
@@ -148,8 +212,14 @@ async def get_product(product_id: int, db: AsyncSession = Depends(get_db)):
     """Single-product detail. Not cached; lighter than the full menu and
     used by direct-link product pages."""
     p = (
-        await db.execute(select(Product).where(Product.id == product_id, Product.is_active.is_(True)))
+        await db.execute(
+            select(Product).where(Product.id == product_id, Product.is_active.is_(True))
+        )
     ).scalar_one_or_none()
     if not p:
         raise HTTPException(404, "Produto não encontrado")
-    return _serialize_product(p)
+    cat = (
+        await db.execute(select(Category).where(Category.id == p.category_id))
+    ).scalar_one_or_none()
+    menu_images = await _load_menu_images(db)
+    return _serialize_product(p, cat.name if cat else "", menu_images)
