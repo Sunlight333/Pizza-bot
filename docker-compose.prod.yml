@@ -78,6 +78,11 @@ services:
       CACHE_REDIS_PREFIX_KEY: evolution
       REDIS_ENABLED: "true"
       REDIS_URI: redis://redis:6379
+      # Without WEBHOOK_GLOBAL_*, Evolution pairs but never POSTs inbound
+      # messages — the bot appears "Conectado" while silently dropping chats.
+      WEBHOOK_GLOBAL_ENABLED: "true"
+      WEBHOOK_GLOBAL_URL: http://backend:8000/api/webhook/evolution
+      WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: "false"
     depends_on:
       postgres:
         condition: service_healthy
