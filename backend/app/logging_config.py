@@ -40,5 +40,9 @@ def configure() -> None:
     root.addHandler(handler)
     root.setLevel(logging.INFO)
 
-    for noisy in ("uvicorn.access", "httpx", "httpcore"):
+    for noisy in ("httpx", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+    # Keep uvicorn.access at INFO so every HTTP request is logged — used to
+    # diagnose silent webhook drops where Evolution claims to POST but the
+    # backend never sees a request.
+    logging.getLogger("uvicorn.access").setLevel(logging.INFO)

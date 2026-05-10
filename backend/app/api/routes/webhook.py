@@ -264,6 +264,10 @@ async def evolution_webhook(request: Request, bg: BackgroundTasks, event_path: s
     # `/messages-upsert`) regardless of WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=false.
     # Accept any suffix; the event name is also in the JSON body.
     raw = await request.body()
+    log.info(
+        "webhook arrived: path=/evolution/%s body_bytes=%d ct=%s",
+        event_path, len(raw), request.headers.get("content-type"),
+    )
     sig = request.headers.get("x-hub-signature-256") or request.headers.get("x-signature")
     if not _verify_signature(raw, sig):
         log.warning("webhook signature mismatch")
