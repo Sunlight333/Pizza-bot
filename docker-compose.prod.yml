@@ -83,6 +83,8 @@ services:
       WEBHOOK_GLOBAL_ENABLED: "true"
       WEBHOOK_GLOBAL_URL: http://backend:8000/api/webhook/evolution
       WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: "false"
+      LOG_LEVEL: "ERROR,WARN,INFO,LOG,WEBHOOKS"
+      LOG_BAILEYS: "error"
     depends_on:
       postgres:
         condition: service_healthy
