@@ -207,6 +207,32 @@ def _render_option_block(options, size_names: List[str]) -> str:
     return ", ".join(parts)
 
 
+async def get_pizza_size_names(db: AsyncSession) -> List[str]:
+    """Distinct size labels across the active pizzas, in the order they appear
+    on the most-recently-edited product. Used by the bot prompt so the
+    'Tamanho (...)' example reflects what the operator actually configured —
+    e.g. just "Brotinho / Grande" for a two-size pizzaria, not the generic
+    "P / M / G / GG" that confuses customers.
+    """
+    res = await db.execute(
+        select(Product)
+        .where(Product.is_active.is_(True))
+        .where(Product.is_pizza.is_(True))
+    )
+    products = res.scalars().all()
+    seen: list[str] = []
+    seen_lower: set[str] = set()
+    for p in products:
+        for s in (p.sizes or []):
+            name = (s.get("size") if isinstance(s, dict) else None) or ""
+            name = name.strip()
+            if not name or name.lower() in seen_lower:
+                continue
+            seen.append(name)
+            seen_lower.add(name.lower())
+    return seen
+
+
 async def get_menu_for_bot(db: AsyncSession) -> str:
     """Render the active menu as a compact text block for the GPT system prompt.
 

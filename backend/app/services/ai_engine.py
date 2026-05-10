@@ -25,7 +25,7 @@ from app.services import customer_service
 from app.services import delivery as delivery_svc
 from app.services import handoff as handoff_svc
 from app.services import order_builder
-from app.services.menu_service import get_menu_for_bot
+from app.services.menu_service import get_menu_for_bot, get_pizza_size_names
 
 log = logging.getLogger(__name__)
 
@@ -481,6 +481,8 @@ async def _build_system_prompt(db: AsyncSession, state: dict) -> str:
     cfg = await _get_bot_config(db)
     menu_text = await get_menu_for_bot(db)
     zones_text = await delivery_svc.get_all_zones_formatted(db)
+    size_names = await get_pizza_size_names(db)
+    sizes_label = " / ".join(size_names) if size_names else "tamanho"
 
     # Cart snapshot — itemised lines + the deterministic subtotal / fee /
     # total. GPT must mirror these numbers; recomputing is forbidden in
@@ -721,7 +723,7 @@ ATENDIMENTO RÁPIDO (regra de ouro — minimize perguntas, maximize captura):
 
       "Pra adiantar seu pedido, me conta tudo numa mensagem só? 🍕
        • Sabor (ou meio-a-meio)
-       • Tamanho (P / M / G / GG)
+       • Tamanho ({sizes_label})
        • Entrega ou retirada? Se entrega, qual bairro?
        • Forma de pagamento (PIX, cartão, dinheiro)
        Se preferir, posso te sugerir as mais pedidas."
