@@ -15,14 +15,17 @@ import { useState } from 'react'
 
 import { ASSETS } from '@/utils/assets'
 
+// All admin pages live under /admin/* so the URL clearly signals the
+// management portal and never collides with customer paths like /menu
+// (the customer browse) or /pedidos (the customer history page).
 const NAV = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/orders', label: 'Pedidos', icon: ClipboardList },
-  { to: '/menu', label: 'Cardápio', icon: Pizza },
-  { to: '/customers', label: 'Clientes', icon: Users },
-  { to: '/delivery', label: 'Entrega', icon: Truck },
-  { to: '/conversations', label: 'Conversas', icon: MessageCircle },
-  { to: '/settings', label: 'Configurações', icon: SettingsIcon },
+  { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/admin/orders', label: 'Pedidos', icon: ClipboardList },
+  { to: '/admin/menu', label: 'Cardápio', icon: Pizza },
+  { to: '/admin/customers', label: 'Clientes', icon: Users },
+  { to: '/admin/delivery', label: 'Entrega', icon: Truck },
+  { to: '/admin/conversations', label: 'Conversas', icon: MessageCircle },
+  { to: '/admin/settings', label: 'Configurações', icon: SettingsIcon },
 ]
 
 export default function Sidebar() {

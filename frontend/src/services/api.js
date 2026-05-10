@@ -23,8 +23,11 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       const { logout } = useAuthStore.getState()
       logout()
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login'
+      // Admin-side bounce. The customer portal uses a separate axios
+      // client (services/customerApi.js) with its own redirect target,
+      // so this only fires for /api/auth/* and other admin endpoints.
+      if (!window.location.pathname.startsWith('/admin/login')) {
+        window.location.href = '/admin/login'
       }
     }
     return Promise.reject(err)

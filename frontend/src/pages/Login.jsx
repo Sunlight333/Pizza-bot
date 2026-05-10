@@ -28,9 +28,9 @@ export default function Login() {
     // location.state.from may be a string (new) or a Location-shaped object (legacy)
     const fromState = location.state?.from
     const from =
-      (typeof fromState === 'string' ? fromState : fromState?.pathname) || '/dashboard'
-    // Don't bounce back to /login itself
-    const safeFrom = from.startsWith('/login') ? '/dashboard' : from
+      (typeof fromState === 'string' ? fromState : fromState?.pathname) || '/admin/dashboard'
+    // Don't bounce back to /admin/login itself
+    const safeFrom = from.startsWith('/admin/login') ? '/admin/dashboard' : from
     return <Navigate to={safeFrom} replace />
   }
 
@@ -44,7 +44,7 @@ export default function Login() {
         headers: { Authorization: `Bearer ${data.access_token}` },
       })
       setAuth(data.access_token, me.data)
-      navigate('/dashboard', { replace: true })
+      navigate('/admin/dashboard', { replace: true })
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Falha ao entrar')
     } finally {

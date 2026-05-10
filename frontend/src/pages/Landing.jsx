@@ -333,7 +333,7 @@ function Nav() {
               smallest screens to leave room for the CTA; mobile users can
               still reach /login from the footer or directly. */}
           <Link
-            to="/login"
+            to="/admin/login"
             className="hidden sm:inline-flex items-center gap-1.5 text-sm font-medium transition-colors hover:text-[var(--ovenred)]"
             style={{ color: 'var(--charcoal-soft)' }}
           >
@@ -341,17 +341,15 @@ function Nav() {
             Acesso da equipe
           </Link>
 
-          {/* Pedir online — direct link to the customer portal SPA, served
-              by host nginx at /pedir/. Hidden on the smallest screens to
-              keep room for the WhatsApp CTA, which is the established
-              path most customers already know. */}
-          <a
-            href="/pedir/"
+          {/* Pedir online — links into the customer portal at /cardapio
+              (browseable without auth; checkout requires login). */}
+          <Link
+            to="/cardapio"
             className="hidden md:inline-flex items-center gap-1.5 text-sm font-semibold transition-colors hover:text-[var(--ovenred)] px-3 py-2 rounded-lg border"
             style={{ color: 'var(--charcoal)', borderColor: 'rgba(31,24,21,0.15)' }}
           >
             Pedir online
-          </a>
+          </Link>
 
           <WhatsAppLink className="btn-whatsapp text-sm px-4 py-2.5">
             <MessageCircle size={16} />
@@ -433,12 +431,12 @@ function Hero() {
                 Pedir pelo WhatsApp
                 <ArrowRight size={16} className="opacity-70" />
               </WhatsAppLink>
-              {/* Pedir online — equal-weight alternative to WhatsApp, points
-                  at the customer portal at /pedir/. */}
-              <a href="/pedir/" className="btn-outline">
+              {/* Pedir online — equal-weight alternative to WhatsApp, links
+                  into the customer portal browse page. */}
+              <Link to="/cardapio" className="btn-outline">
                 Pedir online
                 <ArrowRight size={16} className="opacity-70" />
-              </a>
+              </Link>
             </motion.div>
 
             {/* Inline social proof row */}
@@ -1360,7 +1358,7 @@ function Footer() {
       <div className="max-w-7xl mx-auto px-5 md:px-8 mt-6 flex flex-col sm:flex-row justify-between gap-3 text-xs" style={{ color: 'var(--charcoal-soft)' }}>
         <div>© {year} {BRAND.name}. Feito com forno e paciência.</div>
         <div className="flex gap-5">
-          <Link to="/login" className="hover:underline">Acesso da equipe</Link>
+          <Link to="/admin/login" className="hover:underline">Acesso da equipe</Link>
         </div>
       </div>
     </footer>

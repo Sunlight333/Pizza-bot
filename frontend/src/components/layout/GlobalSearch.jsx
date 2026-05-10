@@ -128,7 +128,7 @@ export default function GlobalSearch() {
                   key={`p-${p.id}`}
                   title={p.name}
                   subtitle={p.description?.slice(0, 60) || ''}
-                  onClick={() => goto('/menu')}
+                  onClick={() => goto('/admin/menu')}
                 />
               ))}
             </Section>
@@ -141,7 +141,7 @@ export default function GlobalSearch() {
                   key={`c-${c.id}`}
                   title={displayName(c.name, c.phone)}
                   subtitle={friendlyPhone(c.phone)}
-                  onClick={() => goto('/customers')}
+                  onClick={() => goto('/admin/customers')}
                 />
               ))}
             </Section>
@@ -154,7 +154,7 @@ export default function GlobalSearch() {
                   key={`o-${o.id}`}
                   title={`Pedido #${String(o.order_number).padStart(3, '0')}`}
                   subtitle={`${displayName(o.customer_name, o.customer_phone)} — R$ ${Number(o.total).toFixed(2).replace('.', ',')}`}
-                  onClick={() => goto('/orders')}
+                  onClick={() => goto('/admin/orders')}
                 />
               ))}
             </Section>
