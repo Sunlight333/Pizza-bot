@@ -133,16 +133,23 @@ def _verify_signature(raw_body: bytes, header_signature: Optional[str]) -> bool:
 
 async def _process(event: dict) -> None:
     event_type = event.get("event") or event.get("eventType")
+
+    # chats.update / contacts.update / presence.update arrive with `data` as a
+    # list of objects, not a dict — only message events have a key/message
+    # shape. Bail before touching .get() so we don't AttributeError on those.
+    if event_type and "message" not in event_type.lower():
+        log.info("webhook _process: skipping non-message event %s", event_type)
+        return
+
     data = event.get("data") or {}
+    if not isinstance(data, dict):
+        log.info("webhook _process: data not a dict (%s) — drop", type(data).__name__)
+        return
     key = data.get("key") or {}
     log.info(
         "webhook _process: event=%s fromMe=%s remoteJid=%s msgId=%s",
         event_type, key.get("fromMe"), key.get("remoteJid"), key.get("id"),
     )
-
-    if event_type and "message" not in event_type.lower():
-        log.info("webhook _process: skipping non-message event %s", event_type)
-        return
 
     if key.get("fromMe"):
         log.info("webhook _process: skipping fromMe (own message)")

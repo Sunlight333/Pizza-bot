@@ -292,23 +292,80 @@ class EvolutionClient:
         except Exception as e:
             return {"error": str(e)}
 
+    # Events the bot pipeline cares about. Other events (chats.upsert,
+    # presence.update, etc.) are still emitted by Evolution but ignored by the
+    # webhook handler; subscribing to too few events means Evolution drops
+    # them on the server side, so we list every event our handler may rely
+    # on for state tracking.
+    WEBHOOK_EVENTS = [
+        "MESSAGES_UPSERT",
+        "MESSAGES_UPDATE",
+        "CONNECTION_UPDATE",
+        "CONTACTS_UPDATE",
+        "CHATS_UPDATE",
+        "PRESENCE_UPDATE",
+    ]
+
+    def _webhook_payload(self) -> dict[str, Any]:
+        return {
+            "enabled": True,
+            "url": "http://backend:8000/api/webhook/evolution",
+            "webhookByEvents": False,
+            "webhookBase64": False,
+            "events": self.WEBHOOK_EVENTS,
+        }
+
     async def create_instance(self) -> dict:
         """
-        Create the instance with the project's standard config.
-        Idempotent: if Evolution returns 403 'already exists' we treat it as success.
+        Create the instance with the project's standard config + per-instance
+        webhook. Evolution v2.2.3's WEBHOOK_GLOBAL_* delivery is broken (the
+        events get queued via the `sendData-Webhook-Global` job channel but
+        the worker never makes the HTTP POST). The per-instance webhook uses
+        a different code path and works. Idempotent: 403/409 from Evolution
+        is treated as success, then we (re)bind the webhook explicitly.
         """
         payload = {
             "instanceName": self._instance,
             "qrcode": True,
             "integration": "WHATSAPP-BAILEYS",
+            "webhook": self._webhook_payload(),
         }
         try:
-            return await self._request("POST", "/instance/create", json=payload)
+            result = await self._request("POST", "/instance/create", json=payload)
         except httpx.HTTPStatusError as e:
             if e.response is not None and e.response.status_code in (403, 409):
-                return {"status": "already_exists"}
-            return {"error": str(e)}
+                result = {"status": "already_exists"}
+            else:
+                return {"error": str(e)}
         except Exception as e:
+            return {"error": str(e)}
+
+        # Always (re-)set the webhook — guards against Evolution silently
+        # dropping the embedded webhook block on already-exists, and against
+        # someone clearing it via the panel. Best-effort.
+        try:
+            await self._request(
+                "POST",
+                f"/webhook/set/{self._instance}",
+                json={"webhook": self._webhook_payload()},
+            )
+        except Exception as e:
+            log.warning("webhook bind after create failed (non-fatal): %s", e)
+
+        return result
+
+    async def ensure_webhook(self) -> dict:
+        """Force-set the per-instance webhook. Called on backend startup so a
+        fresh paired instance immediately starts delivering messages without
+        waiting for someone to hit /reset in the panel."""
+        try:
+            return await self._request(
+                "POST",
+                f"/webhook/set/{self._instance}",
+                json={"webhook": self._webhook_payload()},
+            )
+        except Exception as e:
+            log.warning("ensure_webhook failed: %s", e)
             return {"error": str(e)}
 
 
