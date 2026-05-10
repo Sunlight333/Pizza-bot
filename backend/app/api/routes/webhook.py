@@ -257,8 +257,12 @@ async def _process(event: dict) -> None:
 
 
 @router.post("/evolution")
+@router.post("/evolution/{event_path:path}")
 @limiter.limit("100/minute")
-async def evolution_webhook(request: Request, bg: BackgroundTasks):
+async def evolution_webhook(request: Request, bg: BackgroundTasks, event_path: str = ""):
+    # Evolution v2.2.3 appends the event name to the configured URL (e.g.
+    # `/messages-upsert`) regardless of WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=false.
+    # Accept any suffix; the event name is also in the JSON body.
     raw = await request.body()
     sig = request.headers.get("x-hub-signature-256") or request.headers.get("x-signature")
     if not _verify_signature(raw, sig):
