@@ -20,9 +20,14 @@ import '@/styles/customer.css'
  * the same header layout; cart/notifications/profile are reachable from
  * the right-side icon cluster.
  */
+// Routes where the sticky "go to cart" bar should NOT appear.
+// Includes /produto/* because the product detail page has its own
+// fixed-bottom "Adicionar ao pedido" CTA — stacking the cart bar on
+// top would cover the page's primary action and block the user from
+// adding more items to their order.
 const NO_CART_BAR = [
   '/sacola', '/checkout', '/login', '/login/verify', '/register',
-  '/conta', '/conta/enderecos',
+  '/conta', '/conta/enderecos', '/produto',
 ]
 
 export default function CustomerLayout() {
