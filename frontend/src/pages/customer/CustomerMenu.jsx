@@ -146,8 +146,9 @@ export default function CustomerMenu() {
         </div>
       </div>
 
-      {/* Sticky category pills */}
-      <div className="sticky top-14 md:top-16 z-20 backdrop-blur px-4 md:px-6 py-3"
+      {/* Sticky category pills — top offset accounts for the floating
+          pill header above (top-3/4 + 56px header + 8px breathing room). */}
+      <div className="sticky top-[76px] md:top-[80px] z-20 backdrop-blur px-4 md:px-6 py-3"
            style={{ background: 'rgba(248,241,228,0.95)', borderBottom: '1px solid rgba(31,24,21,0.08)' }}>
         <div className="flex gap-2 overflow-x-auto no-scrollbar">
           <CategoryPill
