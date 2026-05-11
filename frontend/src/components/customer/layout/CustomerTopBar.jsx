@@ -54,7 +54,7 @@ export default function CustomerTopBar() {
     // from the top of the viewport.
     <div className="sticky top-3 md:top-4 z-30 px-3 md:px-6">
       <header
-        className="mx-auto flex items-center gap-2 h-14 px-3 md:px-4 max-w-5xl"
+        className="mx-auto flex items-center gap-2 h-16 md:h-20 px-3 md:px-5 max-w-5xl"
         style={{
           background: 'rgba(255, 252, 247, 0.85)',
           backdropFilter: 'blur(16px)',
@@ -78,11 +78,11 @@ export default function CustomerTopBar() {
           )}
           <Link
             to="/cardapio"
-            className="flex items-center gap-2 px-2 group"
+            className="flex items-center gap-2.5 px-2 group"
             style={{ color: 'var(--c-ovenred)' }}
           >
-            <span className="text-xl md:text-2xl">🍕</span>
-            <span className="font-display text-base md:text-lg whitespace-nowrap leading-none group-hover:opacity-80 transition-opacity">
+            <span className="text-2xl md:text-3xl">🍕</span>
+            <span className="font-display text-lg md:text-xl whitespace-nowrap leading-none group-hover:opacity-80 transition-opacity">
               Forno do Bairro
             </span>
           </Link>
@@ -96,7 +96,7 @@ export default function CustomerTopBar() {
               key={to}
               to={to}
               end={!!end}
-              className="px-4 h-9 rounded-full text-sm font-medium transition-all flex items-center"
+              className="px-4 h-10 rounded-full text-sm font-medium transition-all flex items-center"
               style={({ isActive }) =>
                 isActive
                   ? {

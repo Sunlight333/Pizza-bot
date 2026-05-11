@@ -148,9 +148,9 @@ export default function CustomerMenu() {
 
       {/* Sticky category strip — same floating pill aesthetic as the
           top header. Centered, contained, backdrop-blur, soft shadow.
-          Top offset stacks below the header pill (header sits at top-3/4
-          and is 56 px tall, leave ~12 px breathing room → 76/80 px). */}
-      <div className="sticky top-[76px] md:top-[80px] z-20 px-3 md:px-6 mt-3">
+          Top offset stacks below the header pill (header is at top-3/4
+          and is 64/80 px tall, leave ~12 px breathing room). */}
+      <div className="sticky top-[84px] md:top-[100px] z-20 px-3 md:px-6 mt-3">
         <div
           className="mx-auto flex items-center gap-1 h-12 px-2 max-w-5xl overflow-x-auto no-scrollbar"
           style={{
