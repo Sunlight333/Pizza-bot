@@ -172,44 +172,78 @@ async def verify(token: str, code: str) -> dict:
     return {"ok": False, "reason": "mismatch"}
 
 
+# Brazilian DDDs in active use (2-digit area codes). Used to disambiguate
+# 11-digit inputs: a leading DDD in this set + "9" at position 2 means
+# the user typed a Brazilian mobile without the 55 country prefix.
+# Source: ANATEL plan; we list every valid DDD so US 11-digit numbers
+# (which start with 1) and other countries are treated as international.
+BR_DDDS = {
+    11, 12, 13, 14, 15, 16, 17, 18, 19,
+    21, 22, 24, 27, 28,
+    31, 32, 33, 34, 35, 37, 38,
+    41, 42, 43, 44, 45, 46, 47, 48, 49,
+    51, 53, 54, 55,
+    61, 62, 63, 64, 65, 66, 67, 68, 69,
+    71, 73, 74, 75, 77, 79,
+    81, 82, 83, 84, 85, 86, 87, 88, 89,
+    91, 92, 93, 94, 95, 96, 97, 98, 99,
+}
+
+
+def _looks_brazilian_local(digits: str) -> bool:
+    """True if `digits` looks like a Brazilian local number (DDD + ...)
+    without the 55 country prefix."""
+    if len(digits) not in (10, 11):
+        return False
+    try:
+        return int(digits[:2]) in BR_DDDS
+    except ValueError:
+        return False
+
+
 def normalize_phone(raw: str) -> str:
     """Normalize a WhatsApp phone for OTP delivery.
 
-    Accepts:
-      - Brazilian mobile: 11 digits local (DDD + 9 + 8) → prepend 55
-      - Brazilian mobile already international (5511...): pass through
-      - Any international 8-15 digit number → pass through
+    Accepts any international 8-15 digit number. For inputs that look
+    Brazilian (DDD in the ANATEL list, no country code), enforce the
+    post-2014 mobile "9" prefix rule so we don't accidentally send to a
+    landline that has no WhatsApp.
 
-    Brazilian-specific check: if the digits look Brazilian (10 or 11
-    digits, or 12-13 starting with 55) we enforce the 9-prefix rule
-    because mobiles without a 9 are landlines and have no WhatsApp.
-    Other countries don't get format checks beyond E.164 length bounds.
+    Disambiguation: 11 digits is ambiguous between Brazilian local
+    (DDD + 9 + 8) and country-code-1 international (US/Canada: 1 + 10).
+    Leading "1" wins → US/Canada; otherwise Brazilian-shape check
+    applies. Users can always force international by prefixing with
+    the country code (e.g. "+55..." for Brazilian).
 
-    Returns '' for unparseable / clearly invalid inputs.
+    Returns '' for unparseable inputs and Brazilian-shaped inputs that
+    are missing the 9 prefix.
     """
     digits = re.sub(r"\D", "", raw or "")
     if not digits:
         return ""
 
-    # Brazilian: 11 local (DDD + 9XXXXXXXX). Mobiles must have 9 prefix.
-    if len(digits) == 11:
-        if digits[2] != "9":
-            return ""
-        return "55" + digits
+    # Country code 1 (US/Canada/Caribbean): always 11 digits with leading
+    # 1. Take precedence over Brazilian-DDD interpretation.
+    if len(digits) == 11 and digits[0] == "1":
+        return digits
 
-    # 10 local digits = pre-9 Brazilian or landline; reject (no WhatsApp).
-    if len(digits) == 10:
+    # Brazilian without country code:
+    #   11 digits = DDD (2) + mobile (9) — must have the 9 prefix
+    #   10 digits = DDD (2) + landline (8) — no WhatsApp, reject
+    if len(digits) == 11 and _looks_brazilian_local(digits):
+        return "55" + digits if digits[2] == "9" else ""
+    if len(digits) == 10 and _looks_brazilian_local(digits):
         return ""
 
-    # International 12+ digits already with country code.
-    if len(digits) == 12 and digits.startswith("55"):
-        # 55 + 10-digit landline — reject.
-        return ""
-    if len(digits) == 13 and digits.startswith("55"):
+    # Brazilian with country code (55):
+    #   13 = 55 + DDD + 9 + 8 digits
+    #   12 = 55 + DDD + 8 digits (landline) — reject
+    if len(digits) == 13 and digits.startswith("55") and int(digits[2:4]) in BR_DDDS:
         return digits if digits[4] == "9" else ""
+    if len(digits) == 12 and digits.startswith("55") and int(digits[2:4]) in BR_DDDS:
+        return ""
 
-    # Non-Brazilian international. E.164 is min 8 (e.g. small islands)
-    # max 15 digits including country code.
+    # Anything else: international E.164 (8-15 digits). Pass through.
     if 8 <= len(digits) <= 15:
         return digits
 
@@ -217,22 +251,35 @@ def normalize_phone(raw: str) -> str:
 
 
 def detect_brazilian_format_issue(raw: str) -> str | None:
-    """Return a friendly hint string when the input *looks* like a
-    Brazilian number but is missing the mobile 9 prefix or the country
-    code. Returns None when the input is fine or not Brazilian-shaped.
+    """Return a friendly hint when the input *looks* Brazilian but is
+    missing the mobile 9 prefix. Returns None for genuine international
+    numbers (which normalize_phone accepts) and for inputs we have no
+    specific advice for.
+
+    Skips the US/Canada case (leading 1) so a US number that happens to
+    be 11 digits doesn't get a Brazilian message.
     """
     digits = re.sub(r"\D", "", raw or "")
-    if len(digits) == 10:
-        # Could be DDD + 8-digit (pre-2014 mobile or landline). Suggest
-        # the 9 prefix since most users mean a mobile.
+    if len(digits) == 11 and digits[0] == "1":
+        return None
+    if len(digits) == 10 and _looks_brazilian_local(digits):
         return (
             "Faltou o 9 inicial. Celulares brasileiros têm 11 dígitos "
             "depois do DDD, começando com 9."
         )
-    if len(digits) == 11 and digits[2] != "9":
+    if len(digits) == 11 and _looks_brazilian_local(digits) and digits[2] != "9":
         return "Celulares brasileiros têm um 9 logo após o DDD."
-    if len(digits) == 12 and digits.startswith("55"):
+    if (
+        len(digits) == 12
+        and digits.startswith("55")
+        and int(digits[2:4]) in BR_DDDS
+    ):
         return "Faltou o 9 inicial no número de celular."
-    if len(digits) == 13 and digits.startswith("55") and digits[4] != "9":
+    if (
+        len(digits) == 13
+        and digits.startswith("55")
+        and int(digits[2:4]) in BR_DDDS
+        and digits[4] != "9"
+    ):
         return "Celulares brasileiros têm um 9 logo após o DDD."
     return None
