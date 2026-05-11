@@ -6,6 +6,8 @@ import GlobalSearch from './GlobalSearch'
 import NotificationsBell from './NotificationsBell'
 
 // Admin routes are all under /admin/* so the title map keys match.
+// Settings has sub-routes — the page title becomes "Configurações ·
+// {sub-section}" so the operator always knows which Settings page they're on.
 const TITLES = {
   '/admin/dashboard': 'Dashboard',
   '/admin/orders': 'Pedidos',
@@ -14,6 +16,15 @@ const TITLES = {
   '/admin/delivery': 'Entrega',
   '/admin/conversations': 'Conversas',
   '/admin/settings': 'Configurações',
+}
+const SETTINGS_SUBTITLES = {
+  dashboard: 'Visão geral',
+  datacaixa: 'Datacaixa',
+  evolution: 'WhatsApp / Evolution',
+  bot: 'Bot',
+  'menu-images': 'Imagens do cardápio',
+  users: 'Usuários',
+  profile: 'Meu perfil',
 }
 
 export default function TopBar() {
@@ -24,7 +35,13 @@ export default function TopBar() {
   const theme = useThemeStore((s) => s.theme)
   const toggleTheme = useThemeStore((s) => s.toggleTheme)
 
-  const title = TITLES[location.pathname] ?? 'Pizzabot'
+  let title = TITLES[location.pathname] ?? 'Pizzabot'
+  // Settings sub-routes get a "Configurações · X" title so the operator
+  // always knows which Settings page they're on, even with the sub-sidebar.
+  if (location.pathname.startsWith('/admin/settings/')) {
+    const sub = location.pathname.replace('/admin/settings/', '')
+    if (SETTINGS_SUBTITLES[sub]) title = `Configurações · ${SETTINGS_SUBTITLES[sub]}`
+  }
   const isDark = theme === 'dark'
 
   const handleLogout = () => {

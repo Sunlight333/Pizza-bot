@@ -21,6 +21,7 @@ from app.api.routes import (
     health,
     menu,
     orders,
+    users,
     webhook,
 )
 from app.api.routes.customer import router as customer_router
@@ -101,6 +102,7 @@ app.include_router(conversations.router, prefix="/api/conversations", tags=["con
 app.include_router(evolution.router, prefix="/api/evolution", tags=["evolution"])
 app.include_router(evolution.public_router, prefix="/api/evolution/public", tags=["evolution"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(users.router, prefix="/api/admin/users", tags=["admin", "users"])
 app.include_router(customer_router, prefix="/api")
 
 # Uploaded product photos (see /api/menu/products/upload-image). The mount lives

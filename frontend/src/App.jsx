@@ -36,7 +36,14 @@ import Menu from '@/pages/Menu'
 import Customers from '@/pages/Customers'
 import Delivery from '@/pages/Delivery'
 import Conversations from '@/pages/Conversations'
-import Settings from '@/pages/Settings'
+import SettingsLayout from '@/components/settings/SettingsLayout'
+import SettingsDashboard from '@/pages/settings/SettingsDashboard'
+import SettingsDatacaixa from '@/pages/settings/SettingsDatacaixa'
+import SettingsEvolution from '@/pages/settings/SettingsEvolution'
+import SettingsBot from '@/pages/settings/SettingsBot'
+import SettingsMenuImages from '@/pages/settings/SettingsMenuImages'
+import SettingsUsers from '@/pages/settings/SettingsUsers'
+import SettingsProfile from '@/pages/settings/SettingsProfile'
 
 // Customer Portal
 import CustomerLayout from '@/components/customer/layout/CustomerLayout'
@@ -105,7 +112,18 @@ export default function App() {
         <Route path="/admin/customers" element={<Customers />} />
         <Route path="/admin/delivery" element={<Delivery />} />
         <Route path="/admin/conversations" element={<Conversations />} />
-        <Route path="/admin/settings" element={<Settings />} />
+
+        {/* Settings — sub-sidebar layout with nested sub-pages */}
+        <Route path="/admin/settings" element={<SettingsLayout />}>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<SettingsDashboard />} />
+          <Route path="datacaixa" element={<SettingsDatacaixa />} />
+          <Route path="evolution" element={<SettingsEvolution />} />
+          <Route path="bot" element={<SettingsBot />} />
+          <Route path="menu-images" element={<SettingsMenuImages />} />
+          <Route path="users" element={<SettingsUsers />} />
+          <Route path="profile" element={<SettingsProfile />} />
+        </Route>
       </Route>
 
       {/* Catch-all → public landing. */}
