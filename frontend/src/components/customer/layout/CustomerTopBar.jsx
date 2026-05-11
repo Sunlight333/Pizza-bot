@@ -1,46 +1,35 @@
+import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Menu as MenuIcon, ChevronLeft, ShoppingBag } from 'lucide-react'
+import { Search, ShoppingBag, ChevronLeft, X } from 'lucide-react'
 
 import { useCustomerCart } from '@/stores/customerCart'
 import { useCustomerAuth } from '@/stores/customerAuth'
 import NotificationsPanel from '@/components/customer/NotificationsPanel'
 import UserMenu from '@/components/customer/UserMenu'
 
-const PAGE_TITLES = {
-  '/cardapio': 'Cardápio',
-  '/sacola': 'Sua sacola',
-  '/checkout': 'Finalizar pedido',
-  '/pedidos': 'Meus pedidos',
-  '/conta': 'Minha conta',
-  '/conta/enderecos': 'Endereços',
-  '/login': 'Entrar',
-  '/register': 'Criar cadastro',
-  '/login/verify': 'Confirmar código',
-}
-
-function pageTitle(pathname) {
-  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname]
-  if (pathname.startsWith('/produto/')) return 'Detalhes do produto'
-  if (pathname.startsWith('/pedidos/')) return 'Pedido'
-  return ''
-}
-
 /**
- * Customer-portal header.
+ * Customer-portal header — modern e-commerce style (think iFood / Uber
+ * Eats). No sidebar; everything sits in this top bar.
  *
- * Layout:
- *   [hamburger (mobile only)] [page title]              [bell] [cart] [avatar]
+ * Layout (desktop):
+ *   [logo] [search field — wide]                [bell] [cart] [avatar]
  *
- * Notifications + UserMenu only render for authenticated users —
- * unauthed users see an "Entrar" link in the avatar slot (provided by
- * UserMenu's branch).
+ * Layout (mobile):
+ *   [back/logo] [search icon]                   [bell] [cart] [avatar]
+ *   ─ search opens an inline expanded field on mobile when tapped
+ *
+ * Sub-row (desktop only): horizontal category nav driven by route — for
+ * now just renders breadcrumb-style page titles, but it's the place to
+ * grow into category links once the operator wants them.
  */
-export default function CustomerTopBar({ onToggleSidebar }) {
+export default function CustomerTopBar() {
   const location = useLocation()
   const navigate = useNavigate()
   const itemCount = useCustomerCart((s) => s.itemCount())
   const status = useCustomerAuth((s) => s.status)
   const isAuthed = status === 'authenticated'
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [search, setSearch] = useState('')
 
   const showBack =
     location.pathname.startsWith('/produto/') ||
@@ -49,28 +38,25 @@ export default function CustomerTopBar({ onToggleSidebar }) {
     location.pathname === '/conta/enderecos' ||
     location.pathname === '/login/verify'
 
-  const title = pageTitle(location.pathname)
+  function submitSearch(e) {
+    e?.preventDefault()
+    const q = search.trim()
+    if (!q) return
+    navigate(`/cardapio?q=${encodeURIComponent(q)}`)
+    setSearchOpen(false)
+  }
 
   return (
     <header
-      className="sticky top-0 z-20 h-14 md:h-16 backdrop-blur"
+      className="sticky top-0 z-30 backdrop-blur"
       style={{
-        background: 'rgba(248,241,228,0.85)',
+        background: 'rgba(248,241,228,0.92)',
         borderBottom: '1px solid rgba(31,24,21,0.08)',
       }}
     >
-      <div className="h-full px-3 md:px-6 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          {/* Mobile hamburger */}
-          <button
-            onClick={onToggleSidebar}
-            className="md:hidden p-2 rounded-lg transition-colors hover:bg-[rgba(31,24,21,0.05)]"
-            aria-label="Abrir menu"
-          >
-            <MenuIcon className="w-5 h-5" style={{ color: 'var(--c-charcoal)' }} />
-          </button>
-
-          {/* Back button on inner pages (replaces title slot) */}
+      <div className="max-w-6xl mx-auto h-14 md:h-16 px-3 md:px-6 flex items-center gap-3">
+        {/* Logo / back */}
+        <div className="flex items-center gap-1 shrink-0">
           {showBack && (
             <button
               onClick={() => navigate(-1)}
@@ -80,20 +66,54 @@ export default function CustomerTopBar({ onToggleSidebar }) {
               <ChevronLeft className="w-5 h-5" style={{ color: 'var(--c-charcoal)' }} />
             </button>
           )}
-
-          {/* Page title (or brand on /cardapio) */}
           <Link
             to="/cardapio"
-            className="font-display text-lg md:text-xl truncate"
-            style={{ color: 'var(--c-charcoal)' }}
+            className="flex items-center gap-2 px-1"
+            style={{ color: 'var(--c-ovenred)' }}
           >
-            {title || 'Forno do Bairro'}
+            <span className="text-xl md:text-2xl">🍕</span>
+            <span className="font-display text-base md:text-xl whitespace-nowrap">
+              Forno do Bairro
+            </span>
           </Link>
         </div>
 
+        {/* Search — desktop inline, mobile icon-only */}
+        <form
+          onSubmit={submitSearch}
+          className="hidden md:flex flex-1 max-w-xl mx-4 relative"
+        >
+          <Search
+            className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4"
+            style={{ color: 'var(--c-slate-muted)' }}
+          />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar pizza, bebida, sobremesa…"
+            className="w-full h-10 pl-10 pr-4 rounded-full text-sm focus:outline-none focus:border-2 focus:border-[color:var(--c-charcoal)] transition-colors"
+            style={{
+              background: 'var(--c-offwhite)',
+              border: '1px solid var(--c-slate-line)',
+              color: 'var(--c-charcoal)',
+            }}
+          />
+        </form>
+
+        <div className="flex-1 md:hidden" />
+
+        {/* Right cluster */}
         <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => setSearchOpen((v) => !v)}
+            className="md:hidden p-2 rounded-lg transition-colors hover:bg-[rgba(31,24,21,0.05)]"
+            aria-label="Buscar"
+          >
+            <Search className="w-5 h-5" style={{ color: 'var(--c-charcoal)' }} />
+          </button>
+
           {isAuthed && <NotificationsPanel />}
-          {/* Cart icon — always visible for quick access */}
+
           <Link
             to="/sacola"
             className="relative p-2 rounded-lg transition-colors hover:bg-[rgba(31,24,21,0.05)]"
@@ -109,9 +129,43 @@ export default function CustomerTopBar({ onToggleSidebar }) {
               </span>
             )}
           </Link>
+
           <UserMenu />
         </div>
       </div>
+
+      {/* Mobile expanded search */}
+      {searchOpen && (
+        <div className="md:hidden px-3 pb-3 border-t" style={{ borderColor: 'rgba(31,24,21,0.05)' }}>
+          <form onSubmit={submitSearch} className="relative pt-3">
+            <Search
+              className="absolute left-4 top-1/2 mt-1.5 -translate-y-1/2 w-4 h-4"
+              style={{ color: 'var(--c-slate-muted)' }}
+            />
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar pizza, bebida, sobremesa…"
+              className="w-full h-10 pl-10 pr-10 rounded-full text-sm focus:outline-none focus:border-2 focus:border-[color:var(--c-charcoal)] transition-colors"
+              style={{
+                background: 'var(--c-offwhite)',
+                border: '1px solid var(--c-slate-line)',
+                color: 'var(--c-charcoal)',
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => { setSearch(''); setSearchOpen(false) }}
+              className="absolute right-2 top-1/2 mt-1.5 -translate-y-1/2 p-1.5 rounded-full"
+              style={{ color: 'var(--c-slate-muted)' }}
+              aria-label="Fechar busca"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </form>
+        </div>
+      )}
     </header>
   )
 }

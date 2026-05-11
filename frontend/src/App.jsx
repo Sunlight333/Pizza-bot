@@ -24,10 +24,12 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 // Public marketing landing
 import Landing from '@/pages/Landing'
 
-// Management Portal (admin)
+// Management Portal (admin) — login is shared with the customer portal
+// at /login; that single page detects which kind of credential is being
+// entered and routes to /admin/dashboard or /cardapio appropriately.
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AppLayout from '@/components/layout/AppLayout'
-import AdminLogin from '@/pages/Login'
+import UnifiedLogin from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import Orders from '@/pages/Orders'
 import Menu from '@/pages/Menu'
@@ -39,7 +41,6 @@ import Settings from '@/pages/Settings'
 // Customer Portal
 import CustomerLayout from '@/components/customer/layout/CustomerLayout'
 import CustomerProtectedRoute from '@/components/customer/CustomerProtectedRoute'
-import CustomerLogin from '@/pages/customer/CustomerLogin'
 import CustomerRegister from '@/pages/customer/CustomerRegister'
 import CustomerOTPVerify from '@/pages/customer/CustomerOTPVerify'
 import CustomerMenu from '@/pages/customer/CustomerMenu'
@@ -58,17 +59,16 @@ export default function App() {
       {/* ---------- Public ---------- */}
       <Route path="/" element={<Landing />} />
 
-      {/* ---------- Customer Portal ----------
-          Wrapped in CustomerLayout so they share the cream/charcoal/oven-red
-          theme, top bar, sidebar, and sticky cart bar.
+      {/* ---------- Unified login (admin + customer) ----------
+          Standalone page (its own dark wood-fired hero design); detects
+          customer vs admin credentials by whether '@' is in the field. */}
+      <Route path="/login" element={<UnifiedLogin />} />
+      {/* Legacy /admin/login URL keeps working — bookmarks redirect to /login. */}
+      <Route path="/admin/login" element={<Navigate to="/login" replace />} />
 
-          Auth gating: per the spec, EVERY action requires login. Only the
-          three auth pages (/login, /register, /login/verify) are public
-          inside the layout. The browse routes (/cardapio, /produto, /sacola)
-          are inside <CustomerProtectedRoute> so unauthed visitors get
-          bounced to /login with a `next=` param. */}
+      {/* Register + OTP verify are still customer-portal pages and live
+          inside the customer layout (top bar, brand chrome). */}
       <Route element={<CustomerLayout />}>
-        <Route path="/login" element={<CustomerLogin />} />
         <Route path="/register" element={<CustomerRegister />} />
         <Route path="/login/verify" element={<CustomerOTPVerify />} />
 
@@ -89,9 +89,8 @@ export default function App() {
 
       {/* ---------- Management Portal (admin) ----------
           All admin routes prefixed with /admin so they never collide with
-          customer paths and the URL clearly signals "this is staff-only." */}
-      <Route path="/admin/login" element={<AdminLogin />} />
-
+          customer paths and the URL clearly signals "this is staff-only."
+          Login lives at the unified /login above. */}
       <Route
         element={
           <ProtectedRoute>

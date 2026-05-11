@@ -5,9 +5,10 @@
  *   - Customer auth is an httpOnly session cookie (`pz_session`), set by
  *     /api/customer/auth/verify-otp / /register. So we need
  *     `withCredentials: true` and never an Authorization header.
- *   - Admin axios redirects to `/admin/login` on 401; customer must
- *     redirect to `/login` instead. Keeping these separate avoids the
- *     two interceptors stepping on each other.
+ *   - Both admin (services/api.js) and customer clients redirect to the
+ *     unified /login page on 401. Keeping the clients separate matters
+ *     because customer requests carry the cookie and admin requests
+ *     carry the bearer token.
  *
  * Both clients hit the same FastAPI backend at the same origin.
  */
@@ -38,12 +39,12 @@ client.interceptors.response.use(
 
 // ---------- auth ----------
 //
-// Two-step flow:
-//   login(email, password) → { token, phone_hint }    OTP sent to phone
-//   loginVerify(token, code)                        → sets cookie, returns customer
+// login(email, password) returns one of two shapes:
+//   { verified: true,  customer }                       → cookie set, log in directly
+//   { verified: false, token, phone_hint }              → first-time, OTP required
+//                                                        (customer follows up with /login/verify)
 // register({ name, email, password, phone, marketing_opt_in })
-//                              → { token, phone_hint }    OTP sent to phone
-//   registerVerify(token, code)                       → creates account + cookie
+//                              → { token, phone_hint }  → OTP required, then /register/verify
 // resendOtp(token)             → re-issue the same intent's OTP
 export const auth = {
   login: (email, password) =>

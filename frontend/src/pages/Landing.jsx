@@ -328,27 +328,17 @@ function Nav() {
         </nav>
 
         <div className="flex items-center gap-3 sm:gap-4">
-          {/* Staff entry — text-only link, deliberately quieter than the
-              WhatsApp CTA so customers focus on ordering. Hidden on the
-              smallest screens to leave room for the CTA; mobile users can
-              still reach /login from the footer or directly. */}
+          {/* Single sign-in entry — same /login page handles both
+              customers (email + password + first-time OTP) and staff
+              (username + password). The form detects which by whether
+              '@' appears in the identifier. */}
           <Link
-            to="/admin/login"
-            className="hidden sm:inline-flex items-center gap-1.5 text-sm font-medium transition-colors hover:text-[var(--ovenred)]"
-            style={{ color: 'var(--charcoal-soft)' }}
-          >
-            <Lock size={14} />
-            Acesso da equipe
-          </Link>
-
-          {/* Pedir online — links into the customer portal at /cardapio
-              (browseable without auth; checkout requires login). */}
-          <Link
-            to="/cardapio"
-            className="hidden md:inline-flex items-center gap-1.5 text-sm font-semibold transition-colors hover:text-[var(--ovenred)] px-3 py-2 rounded-lg border"
+            to="/login"
+            className="hidden sm:inline-flex items-center gap-1.5 text-sm font-semibold transition-colors hover:text-[var(--ovenred)] px-3 py-2 rounded-lg border"
             style={{ color: 'var(--charcoal)', borderColor: 'rgba(31,24,21,0.15)' }}
           >
-            Pedir online
+            <Lock size={14} />
+            Entrar
           </Link>
 
           <WhatsAppLink className="btn-whatsapp text-sm px-4 py-2.5">
@@ -431,9 +421,9 @@ function Hero() {
                 Pedir pelo WhatsApp
                 <ArrowRight size={16} className="opacity-70" />
               </WhatsAppLink>
-              {/* Pedir online — equal-weight alternative to WhatsApp, links
-                  into the customer portal browse page. */}
-              <Link to="/cardapio" className="btn-outline">
+              {/* Pedir online — equal-weight alternative; routes through
+                  /login (redirects to /cardapio after auth). */}
+              <Link to="/login?next=%2Fcardapio" className="btn-outline">
                 Pedir online
                 <ArrowRight size={16} className="opacity-70" />
               </Link>
@@ -1358,7 +1348,7 @@ function Footer() {
       <div className="max-w-7xl mx-auto px-5 md:px-8 mt-6 flex flex-col sm:flex-row justify-between gap-3 text-xs" style={{ color: 'var(--charcoal-soft)' }}>
         <div>© {year} {BRAND.name}. Feito com forno e paciência.</div>
         <div className="flex gap-5">
-          <Link to="/admin/login" className="hover:underline">Acesso da equipe</Link>
+          <Link to="/login" className="hover:underline">Entrar</Link>
         </div>
       </div>
     </footer>

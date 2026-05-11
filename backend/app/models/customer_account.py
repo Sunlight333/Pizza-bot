@@ -37,5 +37,10 @@ class CustomerAccount(Base, TimestampMixin):
     password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     marketing_opt_in: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set when the customer's WhatsApp number is verified via OTP for the
+    # first time (during registration). After that, subsequent logins
+    # skip the OTP step — email + password is enough. NULL = not yet
+    # verified, OTP still required on next login.
+    phone_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     customer = relationship("Customer", lazy="joined")

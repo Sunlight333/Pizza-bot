@@ -24,10 +24,11 @@ api.interceptors.response.use(
       const { logout } = useAuthStore.getState()
       logout()
       // Admin-side bounce. The customer portal uses a separate axios
-      // client (services/customerApi.js) with its own redirect target,
-      // so this only fires for /api/auth/* and other admin endpoints.
-      if (!window.location.pathname.startsWith('/admin/login')) {
-        window.location.href = '/admin/login'
+      // client (services/customerApi.js) with its own redirect target.
+      // Login is unified at /login (the page detects admin vs customer
+      // by whether the identifier contains '@').
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login'
       }
     }
     return Promise.reject(err)

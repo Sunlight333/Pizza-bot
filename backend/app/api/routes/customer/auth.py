@@ -129,10 +129,22 @@ def _normalize_email(raw: str) -> str:
 async def login(
     request: Request,
     body: LoginBody,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    """First factor: email + password. Returns an OTP intent token; the
-    client follows up with /login/verify."""
+    """First factor: email + password.
+
+    If the customer already verified their phone (registered before, or
+    completed the OTP step at least once), this endpoint logs them in
+    immediately by setting the session cookie and returning the
+    customer profile — no OTP step.
+
+    First-time logins (account exists, password OK, but phone not yet
+    verified — e.g. a CustomerAccount that was migrated from the old
+    flow without going through the new register-with-OTP step) get the
+    OTP intent token instead and have to verify before the cookie is
+    set. After that single verification, future logins are one-step.
+    """
     email = _normalize_email(body.email)
     res = await db.execute(
         select(CustomerAccount).where(CustomerAccount.email == email)
@@ -152,6 +164,20 @@ async def login(
     if customer is None:
         raise bad
 
+    # Already-verified customer → log in directly.
+    if account.phone_verified_at is not None:
+        account.last_login_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(customer)
+        await db.refresh(account)
+        token = create_customer_token(customer.id)
+        _set_session_cookie(response, token)
+        return {
+            "verified": True,
+            "customer": _to_customer_out(customer, account),
+        }
+
+    # First-time login → require OTP.
     try:
         intent = await login_service.initiate_login(customer.id, customer.phone)
     except Exception:
@@ -163,7 +189,7 @@ async def login(
             "Não foi possível enviar o código pelo WhatsApp agora. "
             "Tente novamente em alguns instantes.",
         )
-    return intent  # {token, phone_hint}
+    return {"verified": False, **intent}  # {verified: false, token, phone_hint}
 
 
 @router.post("/login/verify")
@@ -198,7 +224,11 @@ async def login_verify(
     if account is None:
         raise HTTPException(401, "Conta não encontrada.")
 
-    account.last_login_at = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    account.last_login_at = now
+    # Mark the phone as verified so future logins skip the OTP step.
+    if account.phone_verified_at is None:
+        account.phone_verified_at = now
     await db.commit()
     await db.refresh(customer)
     await db.refresh(account)
@@ -224,10 +254,15 @@ async def register(
         raise HTTPException(400, "E-mail inválido.")
     phone = login_service.normalize_phone(body.phone)
     if not phone:
+        # Friendly Brazilian-format hint if the input looks Brazilian
+        # but is missing a digit; otherwise generic message.
+        hint = login_service.detect_brazilian_format_issue(body.phone)
+        if hint:
+            raise HTTPException(400, hint)
         raise HTTPException(
             400,
-            "Telefone inválido. Use o formato (DDD) 9XXXX-XXXX — "
-            "celulares brasileiros têm 9 dígitos depois do DDD.",
+            "WhatsApp inválido. Informe um número completo com código do país "
+            "(ex.: +55 43 99815-0536 ou +1 555 123 4567).",
         )
 
     # Reject duplicates up front so the user gets a clear "you already
@@ -321,12 +356,16 @@ async def register_verify(
         raise HTTPException(409, "Esta conta já existe. Faça login.")
 
     customer.name = reg["name"]
+    now = datetime.now(timezone.utc)
     account = CustomerAccount(
         customer_id=customer.id,
         email=reg["email"],
         password_hash=reg["password_hash"],
         marketing_opt_in=False,  # default; user can enable in profile
-        last_login_at=datetime.now(timezone.utc),
+        last_login_at=now,
+        # OTP just succeeded — mark the phone verified so subsequent
+        # logins skip the OTP step.
+        phone_verified_at=now,
     )
     db.add(account)
     await db.commit()

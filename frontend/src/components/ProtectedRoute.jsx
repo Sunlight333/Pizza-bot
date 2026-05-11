@@ -14,7 +14,7 @@ export default function ProtectedRoute({ children }) {
   )
 
   if (!token) {
-    return <Navigate to="/admin/login" state={redirectState} replace />
+    return <Navigate to="/login" state={redirectState} replace />
   }
 
   return children

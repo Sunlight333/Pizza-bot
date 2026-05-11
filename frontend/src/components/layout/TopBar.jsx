@@ -5,14 +5,15 @@ import { useThemeStore } from '@/stores/theme'
 import GlobalSearch from './GlobalSearch'
 import NotificationsBell from './NotificationsBell'
 
+// Admin routes are all under /admin/* so the title map keys match.
 const TITLES = {
-  '/dashboard': 'Dashboard',
-  '/orders': 'Pedidos',
-  '/menu': 'Cardápio',
-  '/customers': 'Clientes',
-  '/delivery': 'Entrega',
-  '/conversations': 'Conversas',
-  '/settings': 'Configurações',
+  '/admin/dashboard': 'Dashboard',
+  '/admin/orders': 'Pedidos',
+  '/admin/menu': 'Cardápio',
+  '/admin/customers': 'Clientes',
+  '/admin/delivery': 'Entrega',
+  '/admin/conversations': 'Conversas',
+  '/admin/settings': 'Configurações',
 }
 
 export default function TopBar() {

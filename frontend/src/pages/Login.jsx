@@ -1,52 +1,110 @@
 import { useState } from 'react'
-import { useNavigate, useLocation, Navigate, Link } from 'react-router-dom'
+import { useNavigate, useLocation, Navigate, Link, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import {
   ArrowLeft,
   Clock,
   Lock,
+  Mail,
   MessageCircle,
   Phone,
   User as UserIcon,
 } from 'lucide-react'
 
 import { api } from '@/services/api'
+import { auth as customerAuth } from '@/services/customerApi'
 import { useAuthStore } from '@/stores/auth'
+import { useCustomerAuth } from '@/stores/customerAuth'
 import '@/styles/landing.css'
 
+/**
+ * Unified login page.
+ *
+ * Single form, single page (/login). The identifier field accepts either
+ * an admin USERNAME or a customer EMAIL — we route by whether '@' is
+ * present:
+ *   - has '@' → customer login (email + password). Backend either logs
+ *     in directly (if phone already verified) or returns an OTP intent
+ *     for first-time logins → /login/verify.
+ *   - no '@'  → admin login (username + password) → /admin/dashboard.
+ *
+ * Visual: the previous admin-side design (wood-fired hero on the left,
+ * form panel on the right, branded chrome) — same look for both kinds
+ * of users so they don't have to know which "portal" they're entering.
+ */
 export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { token, setAuth } = useAuthStore()
+  const [params] = useSearchParams()
+  const adminToken = useAuthStore((s) => s.token)
+  const setAuth = useAuthStore((s) => s.setAuth)
+  const customerStatus = useCustomerAuth((s) => s.status)
+  const setCustomer = useCustomerAuth((s) => s.setCustomer)
+  const hydrate = useCustomerAuth((s) => s.hydrate)
 
-  const [username, setUsername] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
-  if (token) {
-    // location.state.from may be a string (new) or a Location-shaped object (legacy)
+  // Bounce already-authed users.
+  // - Admin token → admin dashboard (or `next` if it's an admin path)
+  // - Customer cookie → /cardapio (we don't know cookie state at render
+  //   time without an API call; let normal hydration handle it elsewhere)
+  if (adminToken) {
     const fromState = location.state?.from
     const from =
-      (typeof fromState === 'string' ? fromState : fromState?.pathname) || '/admin/dashboard'
-    // Don't bounce back to /admin/login itself
-    const safeFrom = from.startsWith('/admin/login') ? '/admin/dashboard' : from
+      (typeof fromState === 'string' ? fromState : fromState?.pathname) ||
+      params.get('next') ||
+      '/admin/dashboard'
+    const safeFrom = from.startsWith('/login') ? '/admin/dashboard' : from
     return <Navigate to={safeFrom} replace />
   }
+  if (customerStatus === 'authenticated') {
+    const next = params.get('next') || '/cardapio'
+    return <Navigate to={next} replace />
+  }
+
+  const isCustomer = identifier.includes('@')
 
   const onSubmit = async (e) => {
     e.preventDefault()
-    if (!username || !password) return
+    if (!identifier || !password) return
     setLoading(true)
+
     try {
-      const { data } = await api.post('/api/auth/login', { username, password })
+      if (isCustomer) {
+        // Customer flow.
+        const res = await customerAuth.login(identifier.trim().toLowerCase(), password)
+        if (res.verified) {
+          // Already-verified customer → cookie set, log in directly.
+          setCustomer(res.customer)
+          await hydrate()
+          const next = params.get('next') || '/cardapio'
+          toast.success(`Bem-vindo de volta, ${res.customer.name || ''}!`.trim())
+          navigate(next, { replace: true })
+        } else {
+          // First-time customer → must verify OTP.
+          navigate(
+            `/login/verify?next=${encodeURIComponent(params.get('next') || '/cardapio')}&mode=login`,
+            { state: { token: res.token, phoneHint: res.phone_hint } },
+          )
+        }
+        return
+      }
+
+      // Admin flow (no '@').
+      const { data } = await api.post('/api/auth/login', {
+        username: identifier,
+        password,
+      })
       const me = await api.get('/api/auth/me', {
         headers: { Authorization: `Bearer ${data.access_token}` },
       })
       setAuth(data.access_token, me.data)
-      navigate('/admin/dashboard', { replace: true })
+      navigate(params.get('next') || '/admin/dashboard', { replace: true })
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Falha ao entrar')
+      toast.error(err?.response?.data?.detail || err?.message || 'Falha ao entrar')
     } finally {
       setLoading(false)
     }
@@ -122,21 +180,20 @@ export default function Login() {
                 className="landing-eyebrow"
                 style={{ color: '#FFB47A' }}
               >
-                Painel Administrativo
+                Forno do Bairro
               </span>
               <h2
                 className="landing-display text-[40px] xl:text-[52px] leading-[1.05] mt-4"
                 style={{ color: 'var(--cream)' }}
               >
-                O comando do seu forno, na palma da mão.
+                Pizza assada na hora, entregue ainda quente.
               </h2>
               <p
                 className="mt-5 text-[15px] leading-relaxed max-w-sm"
                 style={{ color: 'rgba(248,241,228,0.82)' }}
               >
-                Gerencie pedidos em tempo real, atualize o cardápio,
-                configure entregas e acompanhe o atendimento do bot —
-                tudo num só lugar.
+                Entre para fazer seu pedido, acompanhar a entrega ao vivo
+                ou — se você é da equipe — abrir o painel administrativo.
               </p>
 
               <div className="mt-8 flex flex-wrap gap-2">
@@ -223,32 +280,42 @@ export default function Login() {
                   e.currentTarget.src = '/images/brand/logo.png'
                 }}
               />
-              <span className="landing-eyebrow">Acesso da equipe</span>
+              <span className="landing-eyebrow">
+                {isCustomer ? 'Cliente' : identifier ? 'Equipe' : 'Bem-vindo'}
+              </span>
               <h1 className="landing-display text-3xl sm:text-[34px] mt-3">
-                Bem-vindo de volta
+                Entrar
               </h1>
               <p
                 className="text-sm mt-2"
                 style={{ color: 'var(--charcoal-soft)', opacity: 0.75 }}
               >
-                Entre com sua conta para abrir o painel.
+                Cliente: use seu e-mail. Equipe: use seu usuário.
               </p>
             </div>
 
             <div className="space-y-3">
               <div className="relative">
-                <UserIcon
-                  size={16}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
-                  style={{ color: 'var(--charcoal-soft)', opacity: 0.55 }}
-                />
+                {isCustomer ? (
+                  <Mail
+                    size={16}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ color: 'var(--charcoal-soft)', opacity: 0.55 }}
+                  />
+                ) : (
+                  <UserIcon
+                    size={16}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ color: 'var(--charcoal-soft)', opacity: 0.55 }}
+                  />
+                )}
                 <input
-                  type="text"
+                  type={isCustomer ? 'email' : 'text'}
                   autoFocus
                   autoComplete="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Usuário"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  placeholder="E-mail ou usuário"
                   className="login-input"
                   disabled={loading}
                 />
@@ -273,19 +340,26 @@ export default function Login() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !identifier || !password}
                 className="btn-ember w-full mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {loading ? 'Entrando…' : 'Entrar'}
               </button>
             </div>
 
-            <p
-              className="text-center text-[11px] mt-7"
-              style={{ color: 'var(--charcoal-soft)', opacity: 0.55 }}
+            <div
+              className="text-center text-sm mt-7 pt-5 border-t"
+              style={{ borderColor: 'rgba(31,24,21,0.10)', color: 'var(--charcoal-soft)' }}
             >
-              Padrão: admin / admin123 — altere após o primeiro acesso.
-            </p>
+              Cliente novo?{' '}
+              <Link
+                to="/register"
+                className="font-semibold hover:underline"
+                style={{ color: 'var(--ovenred)' }}
+              >
+                Criar cadastro
+              </Link>
+            </div>
           </motion.form>
         </main>
       </div>

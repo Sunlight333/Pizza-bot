@@ -173,13 +173,66 @@ async def verify(token: str, code: str) -> dict:
 
 
 def normalize_phone(raw: str) -> str:
-    """Same Brazilian-mobile normalization as services/otp.py — kept
-    here so this module is self-contained."""
+    """Normalize a WhatsApp phone for OTP delivery.
+
+    Accepts:
+      - Brazilian mobile: 11 digits local (DDD + 9 + 8) → prepend 55
+      - Brazilian mobile already international (5511...): pass through
+      - Any international 8-15 digit number → pass through
+
+    Brazilian-specific check: if the digits look Brazilian (10 or 11
+    digits, or 12-13 starting with 55) we enforce the 9-prefix rule
+    because mobiles without a 9 are landlines and have no WhatsApp.
+    Other countries don't get format checks beyond E.164 length bounds.
+
+    Returns '' for unparseable / clearly invalid inputs.
+    """
     digits = re.sub(r"\D", "", raw or "")
     if not digits:
         return ""
+
+    # Brazilian: 11 local (DDD + 9XXXXXXXX). Mobiles must have 9 prefix.
     if len(digits) == 11:
-        return "55" + digits if digits[2] == "9" else ""
+        if digits[2] != "9":
+            return ""
+        return "55" + digits
+
+    # 10 local digits = pre-9 Brazilian or landline; reject (no WhatsApp).
+    if len(digits) == 10:
+        return ""
+
+    # International 12+ digits already with country code.
+    if len(digits) == 12 and digits.startswith("55"):
+        # 55 + 10-digit landline — reject.
+        return ""
     if len(digits) == 13 and digits.startswith("55"):
         return digits if digits[4] == "9" else ""
+
+    # Non-Brazilian international. E.164 is min 8 (e.g. small islands)
+    # max 15 digits including country code.
+    if 8 <= len(digits) <= 15:
+        return digits
+
     return ""
+
+
+def detect_brazilian_format_issue(raw: str) -> str | None:
+    """Return a friendly hint string when the input *looks* like a
+    Brazilian number but is missing the mobile 9 prefix or the country
+    code. Returns None when the input is fine or not Brazilian-shaped.
+    """
+    digits = re.sub(r"\D", "", raw or "")
+    if len(digits) == 10:
+        # Could be DDD + 8-digit (pre-2014 mobile or landline). Suggest
+        # the 9 prefix since most users mean a mobile.
+        return (
+            "Faltou o 9 inicial. Celulares brasileiros têm 11 dígitos "
+            "depois do DDD, começando com 9."
+        )
+    if len(digits) == 11 and digits[2] != "9":
+        return "Celulares brasileiros têm um 9 logo após o DDD."
+    if len(digits) == 12 and digits.startswith("55"):
+        return "Faltou o 9 inicial no número de celular."
+    if len(digits) == 13 and digits.startswith("55") and digits[4] != "9":
+        return "Celulares brasileiros têm um 9 logo após o DDD."
+    return None
