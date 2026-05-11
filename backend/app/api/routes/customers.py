@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.customer import Customer
+from app.models.customer_account import CustomerAccount
 from app.models.order import Order
 from app.schemas.customer import CustomerListItem, CustomerOut, CustomerUpdate
 
@@ -54,7 +55,33 @@ async def get_customer(customer_id: int, db: AsyncSession = Depends(get_db)):
     )
     orders = res.scalars().all()
 
+    # Pull the linked CustomerAccount (web-portal account) if it exists.
+    # Surfacing email / opt-in / birthday / verification state in the
+    # admin Clientes drawer lets the operator answer questions like
+    # "is this customer registered on the web?" without bouncing
+    # between tables.
+    account = (
+        await db.execute(
+            select(CustomerAccount).where(CustomerAccount.customer_id == customer_id)
+        )
+    ).scalar_one_or_none()
+
     payload = CustomerOut.model_validate(c).model_dump()
+    payload["account"] = (
+        {
+            "email": account.email,
+            "email_verified": account.email_verified,
+            "marketing_opt_in": account.marketing_opt_in,
+            "phone_verified_at": account.phone_verified_at.isoformat()
+            if account.phone_verified_at else None,
+            "last_login_at": account.last_login_at.isoformat()
+            if account.last_login_at else None,
+            "created_at": account.created_at.isoformat(),
+        }
+        if account is not None
+        else None
+    )
+    payload["birthday"] = c.birthday.isoformat() if c.birthday else None
     payload["orders"] = [
         {
             "id": o.id,
