@@ -146,11 +146,23 @@ export default function CustomerMenu() {
         </div>
       </div>
 
-      {/* Sticky category pills — top offset accounts for the floating
-          pill header above (top-3/4 + 56px header + 8px breathing room). */}
-      <div className="sticky top-[76px] md:top-[80px] z-20 backdrop-blur px-4 md:px-6 py-3"
-           style={{ background: 'rgba(248,241,228,0.95)', borderBottom: '1px solid rgba(31,24,21,0.08)' }}>
-        <div className="flex gap-2 overflow-x-auto no-scrollbar">
+      {/* Sticky category strip — same floating pill aesthetic as the
+          top header. Centered, contained, backdrop-blur, soft shadow.
+          Top offset stacks below the header pill (header sits at top-3/4
+          and is 56 px tall, leave ~12 px breathing room → 76/80 px). */}
+      <div className="sticky top-[76px] md:top-[80px] z-20 px-3 md:px-6 mt-3">
+        <div
+          className="mx-auto flex items-center gap-1 h-12 px-2 max-w-5xl overflow-x-auto no-scrollbar"
+          style={{
+            background: 'rgba(255, 252, 247, 0.85)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(31, 24, 21, 0.06)',
+            borderRadius: '999px',
+            boxShadow:
+              '0 1px 2px rgba(31,24,21,0.04), 0 12px 32px -12px rgba(31,24,21,0.18)',
+          }}
+        >
           <CategoryPill
             label="Todas"
             active={activeCat === CATEGORY_ALL}
@@ -212,14 +224,25 @@ export default function CustomerMenu() {
 }
 
 function CategoryPill({ label, count, active, onClick }) {
+  // Pills sit *inside* the floating header pill, so they're borderless
+  // and use a tinted background only when active — mirrors the nav-tab
+  // styling in CustomerTopBar (Cardápio active state).
   return (
     <button
       onClick={onClick}
-      className="shrink-0 inline-flex items-center gap-2 px-4 h-9 rounded-full text-sm font-medium transition-colors"
+      className="shrink-0 inline-flex items-center gap-2 px-4 h-8 rounded-full text-sm font-medium transition-all"
       style={
         active
-          ? { background: 'var(--c-charcoal)', color: 'var(--c-offwhite)', border: '1px solid var(--c-charcoal)' }
-          : { background: 'var(--c-offwhite)', color: 'var(--c-charcoal)', border: '1px solid var(--c-slate-line)' }
+          ? {
+              background: 'rgba(139,26,26,0.08)',
+              color: 'var(--c-ovenred)',
+              fontWeight: 600,
+            }
+          : {
+              background: 'transparent',
+              color: 'var(--c-charcoal)',
+              opacity: 0.7,
+            }
       }
     >
       <span>{label}</span>
