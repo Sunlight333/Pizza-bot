@@ -321,7 +321,11 @@ async def get_menu_for_bot(db: AsyncSession) -> str:
                 f"{s['size']} R$ {float(s['price']):.2f}".replace(".", ",")
                 for s in (p.sizes or [])
             )
-            lines.append(f"- {p.name}{' — ' + sizes if sizes else ''}")
+            # The leading [id:N] is REQUIRED — add_pizza_to_cart and
+            # add_simple_product_to_cart take integer IDs, and without this
+            # marker the LLM has been guessing them (and getting them wrong,
+            # e.g. mapping "Frango com Cheddar" to id 33 / "Mexicana Super").
+            lines.append(f"- [id:{p.id}] {p.name}{' — ' + sizes if sizes else ''}")
             if p.description:
                 lines.append(f"    ({p.description})")
             if p.is_pizza:

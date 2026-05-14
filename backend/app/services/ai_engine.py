@@ -653,6 +653,15 @@ REGRAS IMPORTANTES:
 - Confirme sabores, tamanho, borda e adicionais antes de adicionar ao carrinho.
 - Para pizza meio-a-meio: pergunte os dois sabores e {half_pizza_rule}.{flat_price_block}
 - Use as funções disponíveis — NÃO invente preços ou IDs.
+- IDs DE PRODUTO (regra dura): cada item do CARDÁPIO acima começa com
+  `[id:N]`. Esse N é o ÚNICO valor válido para flavor_ids / product_id.
+  NUNCA invente, NUNCA chute, NUNCA reaproveite IDs de outros produtos.
+  Se o cliente pedir "Frango com Cheddar", procure literalmente
+  "Frango com Cheddar" no cardápio acima e use o `[id:N]` que está ANTES
+  do nome dele. Errar o ID faz o sistema cobrar uma pizza errada — bug
+  grave que já gerou reclamação real (pedido com sabor trocado e cobrança
+  duplicada). Se você não achar o sabor exato no cardápio, chame
+  ask_clarification em vez de chutar um ID parecido.
 - Ao perguntar endereço, peça rua, número, bairro e referência.
 - Depois do endereço, informe a taxa e o tempo estimado.
 - Antes de confirmar, mostre o resumo completo e peça confirmação explícita.
@@ -877,6 +886,13 @@ async def _execute_tool_call(
 
     try:
         if name == "add_pizza_to_cart":
+            cart_size_before = len(cart.get("items", []))
+            log.info(
+                "add_pizza_to_cart phone=%s flavor_ids=%s size=%s crust=%s extras=%s qty=%s sem_massa=%s cart_size_before=%d",
+                phone, args.get("flavor_ids"), args.get("size"), args.get("crust"),
+                args.get("extras"), args.get("quantity", 1),
+                bool(args.get("sem_massa", False)), cart_size_before,
+            )
             item = await order_builder.add_pizza(
                 db,
                 cart,
@@ -888,14 +904,39 @@ async def _execute_tool_call(
                 sem_massa=bool(args.get("sem_massa", False)),
             )
             state["state"] = "building_order"
-            return f"OK — adicionado: {item['description']} R$ {item['unit_price']:.2f}"
+            base = f"OK — adicionado: {item['description']} R$ {item['unit_price']:.2f}"
+            # Catch the silent-doubling bug: when the cart already had items,
+            # remind the model to verify intent and remove duplicates. The
+            # last incident had GPT calling add_pizza_to_cart twice with the
+            # same wrong flavor_ids, charging the customer R$ 120 for one
+            # pizza instead of R$ 60.
+            if cart_size_before > 0:
+                base += (
+                    f" — ATENÇÃO: o carrinho agora tem {cart_size_before + 1} item(ns). "
+                    "Se você queria CORRIGIR o item anterior (não adicionar um novo), "
+                    "chame remove_from_cart(index=...) AGORA pra tirar o duplicado, "
+                    "ANTES de mostrar qualquer resumo. Confira o bloco CARRINHO no "
+                    "próximo turno antes de falar com o cliente."
+                )
+            return base
 
         if name == "add_simple_product_to_cart":
+            cart_size_before = len(cart.get("items", []))
+            log.info(
+                "add_simple_product_to_cart phone=%s product_id=%s qty=%s cart_size_before=%d",
+                phone, args.get("product_id"), args.get("quantity", 1), cart_size_before,
+            )
             item = await order_builder.add_simple_product(
                 db, cart, product_id=args["product_id"], quantity=args.get("quantity", 1)
             )
             state["state"] = "building_order"
-            return f"OK — adicionado: {item['description']} R$ {item['unit_price']:.2f}"
+            base = f"OK — adicionado: {item['description']} R$ {item['unit_price']:.2f}"
+            if cart_size_before > 0:
+                base += (
+                    f" — ATENÇÃO: carrinho com {cart_size_before + 1} item(ns). "
+                    "Se foi correção, chame remove_from_cart antes de mostrar resumo."
+                )
+            return base
 
         if name == "remove_from_cart":
             order_builder.remove_item(cart, args["index"] - 1)

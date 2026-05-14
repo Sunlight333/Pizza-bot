@@ -40,7 +40,12 @@ async def add_pizza(
     products = await _load_products(db, flavor_ids)
     flavors = [products[i] for i in flavor_ids if i in products]
     if len(flavors) != len(flavor_ids):
-        raise ValueError("Sabor desconhecido")
+        missing = [i for i in flavor_ids if i not in products]
+        raise ValueError(
+            f"flavor_ids inválidos: {missing}. Use os IDs marcados com [id:N] "
+            f"no CARDÁPIO do system prompt — não chute. Se não achar o sabor "
+            f"que o cliente quer, pergunte com ask_clarification."
+        )
 
     validate_combination(flavors, size, crust, extras)
 
