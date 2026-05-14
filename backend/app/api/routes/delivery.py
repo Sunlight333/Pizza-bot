@@ -1,8 +1,9 @@
 import csv
 import io
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -121,4 +122,33 @@ async def lookup(q: str = Query(..., min_length=1), db: AsyncSession = Depends(g
         fee=float(z.fee),
         estimated_minutes=z.estimated_minutes,
         confidence=result["confidence"],
+    )
+
+
+# ---------- Geocoding helper for the admin Delivery page -----------
+
+class GeocodeQuery(BaseModel):
+    address: str = Field(..., min_length=3, max_length=300)
+
+
+class GeocodeResult(BaseModel):
+    found: bool
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    display_name: Optional[str] = None
+
+
+@router.post("/geocode", response_model=GeocodeResult)
+async def admin_geocode(payload: GeocodeQuery):
+    """Geocode a free-form address (used by the 'Buscar coordenadas'
+    button on the admin Delivery page)."""
+    from app.services import geocode as geocode_svc
+    res = await geocode_svc.geocode(free_form=payload.address)
+    if not res:
+        return GeocodeResult(found=False)
+    return GeocodeResult(
+        found=True,
+        lat=res["lat"],
+        lng=res["lng"],
+        display_name=res.get("display_name"),
     )

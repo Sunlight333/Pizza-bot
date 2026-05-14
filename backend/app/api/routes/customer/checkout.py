@@ -108,8 +108,19 @@ async def quote(
         err = "no_address"
     else:
         neighborhood = address.get("neighborhood")
-        zone = await delivery_svc.calculate_fee(db, neighborhood or "")
+        # resolve_delivery_fee routes through distance-based when the
+        # operator enabled it in Configurações → Entrega; otherwise it
+        # falls back to the neighbourhood-name lookup.
+        zone = await delivery_svc.resolve_delivery_fee(
+            db,
+            street=address.get("street"),
+            number=address.get("number"),
+            neighborhood=neighborhood,
+            cep=address.get("cep"),
+        )
         if zone is None:
+            err = "out_of_zone"
+        elif zone.get("out_of_zone"):
             err = "out_of_zone"
         else:
             delivery_fee = zone["fee"]
@@ -168,9 +179,15 @@ async def place(
     address = _select_address(customer, body.address_index)
     if address is None:
         raise HTTPException(400, "Selecione um endereço de entrega")
-    zone = await delivery_svc.calculate_fee(db, address.get("neighborhood") or "")
-    if zone is None:
-        raise HTTPException(409, "Não entregamos neste bairro")
+    zone = await delivery_svc.resolve_delivery_fee(
+        db,
+        street=address.get("street"),
+        number=address.get("number"),
+        neighborhood=address.get("neighborhood"),
+        cep=address.get("cep"),
+    )
+    if zone is None or zone.get("out_of_zone"):
+        raise HTTPException(409, "Não entregamos neste endereço")
 
     addr_str = ", ".join(filter(None, [
         address.get("street"),

@@ -99,3 +99,15 @@ class BotConfig(Base, TimestampMixin):
     # endpoint; the bot calls send_menu_image when a customer asks for the menu.
     # Empty/missing key = bot falls back to text suggestions for that category.
     menu_images: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+    # --- Delivery: distance-based fee ---
+    # When `delivery_by_distance` is true AND pizzaria_lat/lng are set, the
+    # bot and the customer portal geocode the customer's address (Nominatim,
+    # cached in Redis) and look up the matching delivery_zones band by
+    # `distance_min_km ≤ km ≤ distance_max_km` instead of by neighbourhood
+    # name. Falls back to the name-based lookup when geocoding fails (e.g.
+    # rural addresses Nominatim can't place).
+    pizzaria_address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pizzaria_lat: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)
+    pizzaria_lng: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)
+    delivery_by_distance: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

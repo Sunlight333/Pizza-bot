@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 
 import AnimatedPage from '@/components/layout/AnimatedPage'
 import DeliveryZoneMap from '@/components/delivery/DeliveryZoneMap'
+import DistanceDeliveryConfig from '@/components/delivery/DistanceDeliveryConfig'
 import CountUp from '@/components/ui/CountUp'
 import { api } from '@/services/api'
 import { deliveryApi } from '@/services/delivery'
@@ -150,6 +151,8 @@ export default function Delivery() {
 
   return (
     <AnimatedPage className="space-y-4">
+      <DistanceDeliveryConfig />
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="glass-card p-4">
           <div className="text-xs text-white/50 uppercase">Bairros</div>

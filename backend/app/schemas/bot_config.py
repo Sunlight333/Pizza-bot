@@ -41,6 +41,12 @@ class BotConfigBase(BaseModel):
     # Map of category key ("salgada"|"doce"|"sorvete"|"bebida") -> image URL
     menu_images: Dict[str, str] = Field(default_factory=dict)
 
+    # --- Distance-based delivery (see BotConfig model + services/delivery.py) ---
+    pizzaria_address: Optional[str] = None
+    pizzaria_lat: Optional[float] = None
+    pizzaria_lng: Optional[float] = None
+    delivery_by_distance: bool = False
+
 
 class BotConfigUpdate(BaseModel):
     bot_name: Optional[str] = Field(default=None, min_length=1, max_length=40)
@@ -71,6 +77,11 @@ class BotConfigUpdate(BaseModel):
     privacy_notice: Optional[str] = None
     daily_token_budget: Optional[int] = Field(default=None, ge=0)
     menu_images: Optional[Dict[str, str]] = None
+
+    pizzaria_address: Optional[str] = None
+    pizzaria_lat: Optional[float] = None
+    pizzaria_lng: Optional[float] = None
+    delivery_by_distance: Optional[bool] = None
 
 
 class BotConfigOut(BotConfigBase):

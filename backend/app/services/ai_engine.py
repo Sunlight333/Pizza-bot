@@ -905,11 +905,27 @@ async def _execute_tool_call(
             addr = f"{args['street']}, {args['number']}"
             if args.get("complement"):
                 addr += f" ({args['complement']})"
-            zone = await delivery_svc.calculate_fee(db, args["neighborhood"])
+            # Route through resolve_delivery_fee — when bot_config has
+            # delivery_by_distance=true and pizzaria_lat/lng set, this
+            # geocodes the address (Nominatim, cached) and looks up the
+            # km band; otherwise falls back to neighbourhood-name match.
+            zone = await delivery_svc.resolve_delivery_fee(
+                db,
+                street=args.get("street"),
+                number=args.get("number"),
+                neighborhood=args.get("neighborhood"),
+            )
             if not zone:
                 return (
                     f"bairro '{args['neighborhood']}' não encontrado ou fora da área. "
                     "Diga ao cliente que não atendemos esse bairro e ofereça retirada."
+                )
+            if zone.get("out_of_zone"):
+                return (
+                    f"endereço fora da área de entrega "
+                    f"(distância calculada: {zone.get('distance_km')}km, "
+                    "além da última faixa cadastrada). Diga ao cliente "
+                    "que não conseguimos entregar tão longe e ofereça retirada."
                 )
             cart["delivery_address"] = addr
             cart["delivery_neighborhood"] = zone["neighborhood"]
