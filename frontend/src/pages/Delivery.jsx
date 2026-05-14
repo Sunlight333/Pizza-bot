@@ -14,6 +14,28 @@ import { deliveryApi } from '@/services/delivery'
 const brl = (n) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0)
 
+// Render the km range cell. Empty cells show "—" so the operator can see
+// at a glance which zones are configured as bands and which aren't.
+function KmRangeDisplay({ min, max }) {
+  if (min == null && max == null) {
+    return <span className="text-white/30">—</span>
+  }
+  const lo = min == null ? '0' : String(min).replace('.', ',')
+  const hi = max == null ? '∞' : String(max).replace('.', ',')
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white/5 text-xs font-medium tabular-nums">
+      {lo}–{hi} km
+    </span>
+  )
+}
+
+function nullable(n) {
+  // Empty string → null. Number string → Number. Avoids sending NaN.
+  if (n === '' || n == null) return null
+  const v = Number(n)
+  return isNaN(v) ? null : v
+}
+
 function ZoneRow({ zone, onSave, onDelete }) {
   const [editing, setEditing] = useState(false)
   const [data, setData] = useState(zone)
@@ -23,6 +45,8 @@ function ZoneRow({ zone, onSave, onDelete }) {
       neighborhood: data.neighborhood,
       fee: Number(data.fee),
       estimated_minutes: Number(data.estimated_minutes),
+      distance_min_km: nullable(data.distance_min_km),
+      distance_max_km: nullable(data.distance_max_km),
       is_active: data.is_active,
     })
     setEditing(false)
@@ -67,6 +91,34 @@ function ZoneRow({ zone, onSave, onDelete }) {
         )}
       </td>
       <td className="py-3 px-4">
+        {editing ? (
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              placeholder="min"
+              value={data.distance_min_km ?? ''}
+              onChange={(e) => setData({ ...data, distance_min_km: e.target.value })}
+              className="input-field py-1 text-sm w-16"
+            />
+            <span className="text-white/30 text-xs">a</span>
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              placeholder="max"
+              value={data.distance_max_km ?? ''}
+              onChange={(e) => setData({ ...data, distance_max_km: e.target.value })}
+              className="input-field py-1 text-sm w-16"
+            />
+            <span className="text-white/40 text-xs">km</span>
+          </div>
+        ) : (
+          <KmRangeDisplay min={zone.distance_min_km} max={zone.distance_max_km} />
+        )}
+      </td>
+      <td className="py-3 px-4">
         <span className={`text-xs px-2 py-0.5 rounded-full ${zone.is_active ? 'bg-success/20 text-success' : 'bg-white/10 text-white/40'}`}>
           {zone.is_active ? 'Ativo' : 'Inativo'}
         </span>
@@ -96,7 +148,11 @@ function ZoneRow({ zone, onSave, onDelete }) {
 export default function Delivery() {
   const qc = useQueryClient()
   const [adding, setAdding] = useState(false)
-  const [newZone, setNewZone] = useState({ neighborhood: '', fee: 0, estimated_minutes: 45, is_active: true })
+  const [newZone, setNewZone] = useState({
+    neighborhood: '', fee: 0, estimated_minutes: 45,
+    distance_min_km: '', distance_max_km: '',
+    is_active: true,
+  })
 
   const { data: zones = [], isLoading } = useQuery({
     queryKey: ['zones'],
@@ -113,7 +169,11 @@ export default function Delivery() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['zones'] })
       setAdding(false)
-      setNewZone({ neighborhood: '', fee: 0, estimated_minutes: 45, is_active: true })
+      setNewZone({
+        neighborhood: '', fee: 0, estimated_minutes: 45,
+        distance_min_km: '', distance_max_km: '',
+        is_active: true,
+      })
       toast.success('Bairro adicionado')
     },
     onError: (e) => toast.error(e.response?.data?.detail || 'Erro ao criar'),
@@ -218,6 +278,7 @@ export default function Delivery() {
               <th className="px-4 py-2 font-medium">Bairro</th>
               <th className="px-4 py-2 font-medium">Taxa</th>
               <th className="px-4 py-2 font-medium">Tempo</th>
+              <th className="px-4 py-2 font-medium">Distância (km)</th>
               <th className="px-4 py-2 font-medium">Status</th>
               <th className="px-4 py-2" />
             </tr>
@@ -255,10 +316,42 @@ export default function Delivery() {
                     className="input-field py-1 text-sm w-20"
                   />
                 </td>
+                <td className="py-3 px-4">
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      placeholder="min"
+                      value={newZone.distance_min_km}
+                      onChange={(e) => setNewZone({ ...newZone, distance_min_km: e.target.value })}
+                      className="input-field py-1 text-sm w-16"
+                    />
+                    <span className="text-white/30 text-xs">a</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      placeholder="max"
+                      value={newZone.distance_max_km}
+                      onChange={(e) => setNewZone({ ...newZone, distance_max_km: e.target.value })}
+                      className="input-field py-1 text-sm w-16"
+                    />
+                    <span className="text-white/40 text-xs">km</span>
+                  </div>
+                </td>
                 <td className="py-3 px-4" />
                 <td className="py-3 px-4 text-right space-x-1">
                   <button
-                    onClick={() => createMut.mutate({ ...newZone, fee: Number(newZone.fee), estimated_minutes: Number(newZone.estimated_minutes) })}
+                    onClick={() =>
+                      createMut.mutate({
+                        ...newZone,
+                        fee: Number(newZone.fee),
+                        estimated_minutes: Number(newZone.estimated_minutes),
+                        distance_min_km: nullable(newZone.distance_min_km),
+                        distance_max_km: nullable(newZone.distance_max_km),
+                      })
+                    }
                     className="p-1.5 text-success hover:bg-success/10 rounded"
                   >
                     <Check size={14} />
@@ -270,9 +363,9 @@ export default function Delivery() {
               </motion.tr>
             )}
             {isLoading ? (
-              <tr><td colSpan={5} className="p-6 text-center text-white/50">Carregando...</td></tr>
+              <tr><td colSpan={6} className="p-6 text-center text-white/50">Carregando...</td></tr>
             ) : zones.length === 0 && !adding ? (
-              <tr><td colSpan={5} className="p-6 text-center text-white/50">Nenhum bairro cadastrado</td></tr>
+              <tr><td colSpan={6} className="p-6 text-center text-white/50">Nenhum bairro cadastrado</td></tr>
             ) : (
               zones.map((z) => (
                 <ZoneRow
