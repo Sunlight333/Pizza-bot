@@ -703,6 +703,14 @@ RESUMO E TOTAL — REGRA ABSOLUTA (não quebre por nada):
   Se faltar algum dado (endereço, pagamento), pergunte ANTES de mostrar
   o resumo final — o resumo só sai quando o pedido está pronto pra fechar.
 
+  REGRA OBRIGATÓRIA antes de QUALQUER resumo: o bloco CARRINHO logo acima
+  DEVE ter pelo menos um item. Se está vazio, você ESQUECEU de chamar
+  add_pizza_to_cart — chame agora com os dados que o cliente já passou,
+  SEM pedir desculpa. NUNCA escreva "Vou te passar o resumo", "1× Pizza...",
+  "Total: R$..." ou "Posso confirmar?" antes do CARRINHO ter conteúdo real.
+  Resumos descritos a partir da memória da conversa SÃO BUGS — eles fazem
+  o cliente confirmar um pedido que não existe.
+
 - Cobrar a borda recheada / adicional pago: o sistema já adiciona o
   preço dela ao item no momento do add_pizza_to_cart. NUNCA some um
   valor "extra de borda" por fora — o TOTAL FECHADO já contempla.
@@ -943,6 +951,19 @@ async def _execute_tool_call(
         if name == "set_payment_method":
             cart["payment_method"] = args["method"]
             state["state"] = "confirming"
+            # Hard guard against the silent-summary bug: if the LLM has been
+            # describing the order in text without ever calling
+            # add_pizza_to_cart, the cart is empty here. Refuse to send the
+            # "Mostre o resumo" instruction and force a recovery first.
+            if not cart.get("items"):
+                return (
+                    "ERRO — o CARRINHO está VAZIO mas você está prestes a "
+                    "pedir confirmação. Você esqueceu de chamar add_pizza_to_cart. "
+                    "Olhe o histórico da conversa, identifique sabor + tamanho + "
+                    "borda + adicionais que o cliente já confirmou e CHAME "
+                    "add_pizza_to_cart agora com esses dados. NÃO peça desculpa, "
+                    "NÃO peça pro cliente repetir — apenas adicione e siga adiante."
+                )
             if args["method"] == "cash":
                 # Nudge GPT to ask about change BEFORE letting it confirm.
                 return (
@@ -953,6 +974,22 @@ async def _execute_tool_call(
             return f"OK — pagamento: {args['method']}. Mostre o resumo e peça confirmação."
 
         if name == "confirm_order":
+            # Same guard: if the LLM tries to confirm without items in the
+            # cart, don't bubble a vague "Carrinho vazio" up. Tell the LLM
+            # exactly what to do — re-extract from history + add_pizza_to_cart,
+            # not apologize-and-restart.
+            if not cart.get("items"):
+                log.warning("confirm_order with empty cart for %s — forcing recovery", phone)
+                return (
+                    "ERRO — você chamou confirm_order com o CARRINHO VAZIO. "
+                    "Isso significa que você esqueceu de chamar add_pizza_to_cart "
+                    "(e/ou add_simple_product_to_cart) em algum momento anterior. "
+                    "RECUPERE AGORA: olhe o histórico da conversa, identifique "
+                    "TODOS os itens que o cliente já confirmou (sabor + tamanho + "
+                    "borda + adicionais), chame add_pizza_to_cart pra cada um, e "
+                    "depois chame confirm_order DE NOVO. NÃO peça desculpa, NÃO "
+                    "fale 'houve um probleminha', NÃO peça pro cliente repetir."
+                )
             customer_name = state.get("customer_name")
             # If we're outside operating hours, hold the order until the
             # next opening so the bridge doesn't push it to Datacaixa during

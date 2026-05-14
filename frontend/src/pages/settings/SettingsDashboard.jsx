@@ -19,6 +19,12 @@ import { api } from '@/services/api'
  * three things that go wrong most often (WhatsApp pairing, Datacaixa
  * sync, bot persona drift) with a one-tap link to the page that fixes
  * each of them.
+ *
+ * IMPORTANT: agrees with EvolutionConfig by reading BOTH endpoints —
+ * connectionState (nested under .instance) AND fetchInstances (flat).
+ * Earlier this card read only one of them and crashed into the nested-
+ * shape mismatch, showing "Desconectado" when WhatsApp was actually
+ * paired and online.
  */
 
 function StatusCard({ title, status, sub, href, icon: Icon, ok }) {
@@ -47,9 +53,18 @@ function StatusCard({ title, status, sub, href, icon: Icon, ok }) {
 }
 
 export default function SettingsDashboard() {
-  const { data: evo } = useQuery({
+  // /api/evolution/status returns the raw Evolution payload, which
+  // nests state under .instance:  {"instance": {"state": "open"}}
+  const { data: evoStatus } = useQuery({
     queryKey: ['evolution-status'],
     queryFn: () => api.get('/api/evolution/status').then((r) => r.data),
+    refetchInterval: 30_000,
+  })
+  // /api/evolution/instance returns a flat row from fetchInstances with
+  // a `status` (not `state`!) field plus phone/profile metadata.
+  const { data: evoInstance } = useQuery({
+    queryKey: ['evolution-instance'],
+    queryFn: () => api.get('/api/evolution/instance').then((r) => r.data),
     refetchInterval: 30_000,
   })
   const { data: bridge } = useQuery({
@@ -62,8 +77,15 @@ export default function SettingsDashboard() {
     queryFn: () => api.get('/api/bot/config').then((r) => r.data),
   })
 
-  const evoConnected = evo?.state === 'open' || evo?.state === 'connected'
+  // Same OR-pattern EvolutionConfig already uses, applied here.
+  // Both endpoints intermittently lag each other on pairing transitions,
+  // so accepting either signal is more reliable than relying on one.
+  const evoStateValue = evoStatus?.instance?.state || evoStatus?.state || evoInstance?.status
+  const evoConnected = evoStateValue === 'open'
+
+  // Bridge status field is `last_heartbeat`, not `last_seen`.
   const bridgeOnline = !!bridge?.online
+  const bridgeLastSeen = bridge?.last_heartbeat
 
   return (
     <AnimatedPage className="space-y-5">
@@ -78,8 +100,20 @@ export default function SettingsDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <StatusCard
           title="WhatsApp"
-          status={evoConnected ? 'Pareado e conectado' : 'Desconectado — religue para enviar mensagens'}
-          sub={evo?.state ? `state: ${evo.state}` : null}
+          status={
+            evoConnected
+              ? evoInstance?.profile_name
+                ? `Pareado · ${evoInstance.profile_name}`
+                : 'Pareado e conectado'
+              : 'Desconectado — religue para enviar mensagens'
+          }
+          sub={
+            evoConnected && evoInstance?.phone
+              ? `+${evoInstance.phone}`
+              : evoStateValue
+                ? `state: ${evoStateValue}`
+                : null
+          }
           href="../evolution"
           icon={evoConnected ? Wifi : WifiOff}
           ok={evoConnected}
@@ -87,7 +121,11 @@ export default function SettingsDashboard() {
         <StatusCard
           title="Datacaixa"
           status={bridgeOnline ? 'Bridge online — pedidos sincronizando' : 'Bridge offline'}
-          sub={bridge?.last_seen ? `último ping: ${new Date(bridge.last_seen).toLocaleString('pt-BR')}` : null}
+          sub={
+            bridgeLastSeen
+              ? `último ping: ${new Date(bridgeLastSeen).toLocaleString('pt-BR')}${bridge?.host ? ` · ${bridge.host}` : ''}`
+              : null
+          }
           href="../datacaixa"
           icon={FileSpreadsheet}
           ok={bridgeOnline}
