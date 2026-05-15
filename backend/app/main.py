@@ -17,19 +17,18 @@ from app.api.routes import (
     conversations,
     customers,
     delivery,
-    evolution,
     health,
     menu,
     orders,
     users,
     webhook,
+    whatsapp_admin,
 )
 from app.api.routes.customer import router as customer_router
 from app.config import settings
 from app.logging_config import configure as configure_logging
 from app.middleware.rate_limit import limiter
 from app.services import scheduler as scheduler_svc
-from app.services.whatsapp import client as wa_client
 
 configure_logging()
 log = logging.getLogger(__name__)
@@ -39,15 +38,9 @@ log = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     log.info("pizzabot api starting", extra={"cors": settings.cors_origins_list})
     scheduler_svc.start()
-    # Force-bind the per-instance webhook on every boot. Evolution v2.2.3's
-    # WEBHOOK_GLOBAL_* config is silently broken (queues events but never
-    # POSTs); per-instance delivery uses a different code path and works.
-    # Without this, a freshly-paired instance won't deliver inbound messages
-    # until someone clicks "Resetar instância" in the panel.
-    try:
-        await wa_client.ensure_webhook()
-    except Exception:
-        log.exception("ensure_webhook on startup failed")
+    # Meta Cloud API has no per-instance webhook to bind — the URL is set
+    # once in App Dashboard → WhatsApp → Configuration and persists at
+    # Meta. Nothing to do on startup beyond logging.
     yield
     scheduler_svc.shutdown()
     log.info("pizzabot api stopping")
@@ -99,8 +92,8 @@ app.include_router(webhook.router, prefix="/api/webhook", tags=["webhook"])
 app.include_router(bridge.router, prefix="/api/bridge", tags=["bridge"])
 app.include_router(bot_config.router, prefix="/api/bot/config", tags=["bot"])
 app.include_router(conversations.router, prefix="/api/conversations", tags=["conversations"])
-app.include_router(evolution.router, prefix="/api/evolution", tags=["evolution"])
-app.include_router(evolution.public_router, prefix="/api/evolution/public", tags=["evolution"])
+app.include_router(whatsapp_admin.router, prefix="/api/whatsapp", tags=["whatsapp"])
+app.include_router(whatsapp_admin.public_router, prefix="/api/whatsapp/public", tags=["whatsapp"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(users.router, prefix="/api/admin/users", tags=["admin", "users"])
 app.include_router(customer_router, prefix="/api")

@@ -71,12 +71,12 @@ const fadeUp = {
 // -------------------------------------------------------------------------
 // Every CTA routes to BRAND.whatsappNumber — the single, customer-facing
 // WhatsApp the pizzaria advertises (matches what's printed on the menu).
-// We still poll the backend for Evolution's pairing state so the UI can
-// show a friendly "bot is configuring" modal when the bot won't reply for
-// a while; that flag drives the modal only, never the routed number.
+// We still poll the backend for Cloud API health so the UI can show a
+// friendly "bot is configuring" modal when the bot won't reply for a
+// while; that flag drives the modal only, never the routed number.
 // =========================================================================
 async function fetchWhatsappStatus() {
-  const url = `${getApiBase()}/api/evolution/public/whatsapp`
+  const url = `${getApiBase()}/api/whatsapp/public/whatsapp`
   const res = await fetch(url, {
     signal: AbortSignal.timeout?.(5000),
   })
@@ -101,8 +101,9 @@ function WhatsAppProvider({ children }) {
   const [offlineOpen, setOfflineOpen] = useState(false)
 
   const connected = !!data?.connected
-  // Always advertise the canonical number — never whatever happens to be
-  // paired in Evolution (could be a staging line, a previous SIM, etc.).
+  // Always advertise the canonical number — Cloud API echoes it from the
+  // WABA, but BRAND.whatsappNumber is what's printed on flyers and
+  // shouldn't drift if the WABA is ever swapped.
   const phone = BRAND.whatsappNumber
   const url = `https://wa.me/${phone}?text=${encodeURIComponent(BRAND.whatsappText)}`
 

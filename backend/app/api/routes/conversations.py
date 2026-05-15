@@ -1,5 +1,4 @@
 """Conversation viewer API for the admin panel."""
-import base64
 import json
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -211,16 +210,19 @@ async def send_admin_media(
         filename=file.filename,
     )
 
-    payload_b64 = base64.b64encode(raw).decode("ascii")
     try:
         if media_type == "audio":
-            await wa_client.send_audio(phone, payload_b64)
+            await wa_client.send_audio(
+                phone, raw, mime_type=file.content_type or "audio/ogg",
+            )
         else:
             await wa_client.send_media(
                 phone,
-                media_base64_or_url=payload_b64,
+                raw,
                 media_type="image",
+                mime_type=file.content_type or "image/jpeg",
                 caption=caption or None,
+                filename=file.filename or "image.jpg",
             )
     except Exception as e:
         # The file is already on disk; don't leak it if WhatsApp delivery failed —

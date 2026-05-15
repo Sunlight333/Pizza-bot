@@ -2,7 +2,7 @@
 
 Code lifecycle:
   - generate_and_send(phone) — picks a random 6-digit code, stores it in
-    Redis with a 10-min TTL and 0 attempts, sends via Evolution.
+    Redis with a 10-min TTL and 0 attempts, sends via Meta WhatsApp.
   - verify(phone, code) — checks against the stored code; consumes on
     success; increments and bounces on failure (max 3 tries).
 

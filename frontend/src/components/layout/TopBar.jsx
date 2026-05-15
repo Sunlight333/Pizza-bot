@@ -20,7 +20,7 @@ const TITLES = {
 const SETTINGS_SUBTITLES = {
   dashboard: 'Visão geral',
   datacaixa: 'Datacaixa',
-  evolution: 'WhatsApp / Evolution',
+  whatsapp: 'WhatsApp (Meta)',
   bot: 'Bot',
   'menu-images': 'Imagens do cardápio',
   users: 'Usuários',

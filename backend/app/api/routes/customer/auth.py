@@ -181,9 +181,9 @@ async def login(
     try:
         intent = await login_service.initiate_login(customer.id, customer.phone)
     except Exception:
-        # Evolution / WhatsApp pairing down. Tell the client honestly so
-        # they can show "WhatsApp temporariamente indisponível" instead
-        # of "wrong password."
+        # WhatsApp Cloud API down or token revoked. Tell the client
+        # honestly so they can show "WhatsApp temporariamente indisponível"
+        # instead of "wrong password."
         raise HTTPException(
             503,
             "Não foi possível enviar o código pelo WhatsApp agora. "

@@ -22,10 +22,21 @@ class Settings(BaseSettings):
 
     openai_api_key: str = Field(default="")
 
-    evolution_api_url: str = Field(default="")
-    evolution_api_key: str = Field(default="")
-    evolution_instance_name: str = Field(default="pizzabot")
-    evolution_webhook_secret: str = Field(default="")
+    # Meta WhatsApp Cloud API. Replaces the old Evolution integration —
+    # set these in /opt/pizzabot/.env on the VPS. Token is a permanent
+    # System User token from Meta Business Settings → Users → System
+    # users → pizzabot. App secret is from App Dashboard → Settings →
+    # Basic. Phone number id is from App Dashboard → WhatsApp → API
+    # Setup (NOT the phone number itself — a separate id). Verify token
+    # is a freeform string we send back during the GET handshake; pick
+    # anything random and paste the same value into Meta's webhook config.
+    meta_access_token: str = Field(default="")
+    meta_app_secret: str = Field(default="")
+    meta_phone_number_id: str = Field(default="")
+    meta_waba_id: str = Field(default="")
+    meta_display_phone_number: str = Field(default="")  # E.164 e.g. +5517991234567
+    meta_verify_token: str = Field(default="")
+    meta_graph_version: str = Field(default="v22.0")
 
     bridge_token: str = Field(default="")
     admin_phones: str = Field(default="")  # comma-separated

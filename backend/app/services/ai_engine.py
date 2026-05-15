@@ -5,7 +5,6 @@ The engine gets a turn from WhatsApp, renders the full context, calls OpenAI,
 executes any tool calls (add_to_cart, set_delivery_address, etc.), and returns
 a plain-text reply to send back.
 """
-import base64
 import json
 import logging
 from datetime import timezone
@@ -1154,11 +1153,12 @@ async def _execute_tool_call(
                     "3-4 sugestões e perguntando o que ele quer."
                 )
             try:
-                # Stored URL is /media/products/<file>. Evolution needs an
-                # absolute, publicly reachable URL OR raw base64. We don't
-                # assume the backend is reachable from Evolution's host, so
-                # read the file off disk and ship base64.
-                media_payload: str
+                # Stored URL is /media/products/<file>. Meta Cloud API
+                # accepts either a media_id (after upload) or a publicly
+                # reachable link; the menu images sit behind the host
+                # nginx and aren't guaranteed reachable from Meta's edge,
+                # so we read the bytes and the WA client uploads them.
+                import mimetypes
                 if url.startswith("/media/"):
                     media_root = Path(__file__).resolve().parents[2] / "media"
                     rel = url[len("/media/"):].lstrip("/")
@@ -1167,15 +1167,21 @@ async def _execute_tool_call(
                         raise ValueError("invalid menu image path")
                     if not file_path.is_file():
                         raise FileNotFoundError(f"menu image missing on disk: {url}")
-                    media_payload = base64.b64encode(file_path.read_bytes()).decode("ascii")
+                    media_bytes = file_path.read_bytes()
+                    mime = mimetypes.guess_type(str(file_path))[0] or "image/jpeg"
+                    fname = file_path.name
                 else:
-                    # Already-absolute URL stored by some other flow — pass through.
-                    media_payload = url
+                    raise ValueError(
+                        "menu image URL is not a local /media path; Meta "
+                        "Cloud API needs raw bytes or a public link"
+                    )
                 from app.services.whatsapp import client as wa
                 await wa.send_media(
                     phone=phone,
-                    media_base64_or_url=media_payload,
+                    data=media_bytes,
                     media_type="image",
+                    mime_type=mime,
+                    filename=fname,
                 )
                 # Persist as an assistant message so both the admin chat viewer
                 # (real customer side) and the simulator panel can render the

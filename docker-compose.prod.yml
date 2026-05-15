@@ -52,46 +52,9 @@ services:
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
 
-  evolution:
-    # Custom image: upstream v2.2.3 + LID-bypass patch on the outbound
-    # validator so the bot can reply to modern WhatsApp clients (which route
-    # via `<id>@lid` JIDs, not phone JIDs). See evolution/Dockerfile.
-    build: ./evolution
-    image: pizzabot-evolution:v2.2.3-lid
-    restart: always
-    environment:
-      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
-      DATABASE_ENABLED: "true"
-      # v2.x renamed DATABASE_TYPE → DATABASE_PROVIDER. Without this, the
-      # container crashloops with "Database provider  invalid." and the
-      # backend's /sendMedia calls fail with name-resolution errors.
-      DATABASE_PROVIDER: postgresql
-      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/evolution
-      DATABASE_CONNECTION_CLIENT_NAME: evolution_exchange
-      # WhatsApp Web protocol version — must be kept current or Baileys
-      # silently fails the handshake (no QR emitted, no error). Bump to
-      # whatever WhatsAppSockets/Baileys' baileys-version.json upstream
-      # reports if pairing breaks again.
-      CONFIG_SESSION_PHONE_VERSION: 2.3000.1035194821
-      CACHE_REDIS_ENABLED: "true"
-      CACHE_REDIS_URI: redis://redis:6379/1
-      CACHE_REDIS_PREFIX_KEY: evolution
-      REDIS_ENABLED: "true"
-      REDIS_URI: redis://redis:6379
-      # Without WEBHOOK_GLOBAL_*, Evolution pairs but never POSTs inbound
-      # messages — the bot appears "Conectado" while silently dropping chats.
-      WEBHOOK_GLOBAL_ENABLED: "true"
-      WEBHOOK_GLOBAL_URL: http://backend:8000/api/webhook/evolution
-      WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: "false"
-      LOG_LEVEL: "ERROR,WARN,INFO,LOG,WEBHOOKS"
-      LOG_BAILEYS: "error"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - evolution_instances:/evolution/instances
+  # The Evolution container has been removed — the bot now talks directly
+  # to Meta's WhatsApp Cloud API. Saves ~500 MB RAM on the 2 GB VPS and
+  # eliminates the QR-pairing / instance-state failure modes.
 
   nginx:
     image: nginx:1.27-alpine
@@ -117,6 +80,5 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  evolution_instances:
   uptime_data:
   media_data:

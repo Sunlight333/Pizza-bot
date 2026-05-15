@@ -9,7 +9,7 @@ import { ASSETS } from '@/utils/assets'
 const LABELS = {
   postgres: 'Postgres',
   redis: 'Redis',
-  evolution: 'WhatsApp',
+  whatsapp: 'WhatsApp (Meta)',
   bridge: 'Datacaixa',
   openai: 'OpenAI',
 }
@@ -38,7 +38,7 @@ export default function HealthWidget() {
     refetchInterval: 30_000,
   })
 
-  const components = ['postgres', 'redis', 'evolution', 'bridge', 'openai']
+  const components = ['postgres', 'redis', 'whatsapp', 'bridge', 'openai']
 
   // Aggregate state for the system-wide hero icon
   const summary = !data

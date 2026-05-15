@@ -20,11 +20,10 @@ import { api } from '@/services/api'
  * sync, bot persona drift) with a one-tap link to the page that fixes
  * each of them.
  *
- * IMPORTANT: agrees with EvolutionConfig by reading BOTH endpoints —
- * connectionState (nested under .instance) AND fetchInstances (flat).
- * Earlier this card read only one of them and crashed into the nested-
- * shape mismatch, showing "Desconectado" when WhatsApp was actually
- * paired and online.
+ * "WhatsApp" status: probes the Cloud API token via /api/whatsapp/status,
+ * which calls Graph and returns {ok: bool, display_phone_number, ...}.
+ * No more dual-endpoint dance — the WABA-phone binding is permanent at
+ * Meta, so a 200 from Graph is the only signal that matters.
  */
 
 function StatusCard({ title, status, sub, href, icon: Icon, ok }) {
@@ -53,18 +52,9 @@ function StatusCard({ title, status, sub, href, icon: Icon, ok }) {
 }
 
 export default function SettingsDashboard() {
-  // /api/evolution/status returns the raw Evolution payload, which
-  // nests state under .instance:  {"instance": {"state": "open"}}
-  const { data: evoStatus } = useQuery({
-    queryKey: ['evolution-status'],
-    queryFn: () => api.get('/api/evolution/status').then((r) => r.data),
-    refetchInterval: 30_000,
-  })
-  // /api/evolution/instance returns a flat row from fetchInstances with
-  // a `status` (not `state`!) field plus phone/profile metadata.
-  const { data: evoInstance } = useQuery({
-    queryKey: ['evolution-instance'],
-    queryFn: () => api.get('/api/evolution/instance').then((r) => r.data),
+  const { data: waStatus } = useQuery({
+    queryKey: ['wa-status'],
+    queryFn: () => api.get('/api/whatsapp/status').then((r) => r.data),
     refetchInterval: 30_000,
   })
   const { data: bridge } = useQuery({
@@ -77,11 +67,7 @@ export default function SettingsDashboard() {
     queryFn: () => api.get('/api/bot/config').then((r) => r.data),
   })
 
-  // Same OR-pattern EvolutionConfig already uses, applied here.
-  // Both endpoints intermittently lag each other on pairing transitions,
-  // so accepting either signal is more reliable than relying on one.
-  const evoStateValue = evoStatus?.instance?.state || evoStatus?.state || evoInstance?.status
-  const evoConnected = evoStateValue === 'open'
+  const waConnected = !!waStatus?.ok
 
   // Bridge status field is `last_heartbeat`, not `last_seen`.
   const bridgeOnline = !!bridge?.online
@@ -99,24 +85,24 @@ export default function SettingsDashboard() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <StatusCard
-          title="WhatsApp"
+          title="WhatsApp (Meta)"
           status={
-            evoConnected
-              ? evoInstance?.profile_name
-                ? `Pareado · ${evoInstance.profile_name}`
-                : 'Pareado e conectado'
-              : 'Desconectado — religue para enviar mensagens'
+            waConnected
+              ? waStatus.verified_name
+                ? `Conectado · ${waStatus.verified_name}`
+                : 'Token válido — Meta respondeu OK'
+              : waStatus?.error
+                ? `Falha: ${waStatus.error}`
+                : 'Não verificado'
           }
           sub={
-            evoConnected && evoInstance?.phone
-              ? `+${evoInstance.phone}`
-              : evoStateValue
-                ? `state: ${evoStateValue}`
-                : null
+            waConnected && waStatus.display_phone_number
+              ? waStatus.display_phone_number
+              : null
           }
-          href="../evolution"
-          icon={evoConnected ? Wifi : WifiOff}
-          ok={evoConnected}
+          href="../whatsapp"
+          icon={waConnected ? Wifi : WifiOff}
+          ok={waConnected}
         />
         <StatusCard
           title="Datacaixa"

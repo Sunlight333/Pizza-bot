@@ -1,14 +1,35 @@
 """
-Evolution API webhook — receives WhatsApp events and routes to the bot.
-Responds 200 immediately and processes async.
-Optional HMAC verification when EVOLUTION_WEBHOOK_SECRET is set.
+Meta WhatsApp Cloud API webhook.
+
+Two endpoints under one path:
+
+GET  /api/webhook/meta — handshake. Meta calls this once when you save
+     the webhook URL in App Dashboard → WhatsApp → Configuration. Echo
+     back `hub.challenge` if `hub.verify_token` matches our config.
+
+POST /api/webhook/meta — incoming events. The body is HMAC-SHA256
+     signed with the App Secret in the X-Hub-Signature-256 header.
+     We verify, parse Meta's envelope (object → entry[] → changes[] →
+     value.messages[]), normalize each message, and dispatch to the
+     bot pipeline. Always returns 200 fast — Meta retries aggressively
+     on non-2xx and that turns into duplicate orders.
+
+Notes vs the old Evolution webhook:
+- No more LID / @lid quirks. Cloud API gives us digits-only E.164 in
+  `wa_id` and `from`. Group / broadcast traffic doesn't reach this
+  endpoint at all.
+- Audio + image arrive as media_id only; we fetch bytes via the
+  WhatsApp client.
+- Statuses (delivered/read/failed) arrive too — we currently log and
+  drop them; future work could wire delivery receipts to admin UI.
 """
 import hashlib
 import hmac
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi.responses import PlainTextResponse
 
 from app.config import settings
 from app.database import AsyncSessionLocal
@@ -21,107 +42,41 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _extract_phone(data: dict) -> Optional[str]:
-    """Extract the customer's phone number from a webhook event.
+# ---------- payload normalization ----------
 
-    WhatsApp's privacy protocol now sends `remoteJid` as `<lid>@lid`
-    (a 15-digit anonymized identifier) for users with privacy enabled.
-    The actual phone JID is in `senderPn` / `participantPn` (Evolution
-    v2.2.x). We must use that — sending text to an LID number returns
-    400 "exists: false" because the LID is not a real phone number.
+def _extract_message_envelope(event: dict) -> list[tuple[dict, dict]]:
+    """Walk Meta's nested envelope; yield (value, message) tuples.
+
+    `value` is the inner object that holds `metadata`, `contacts`, and
+    `messages`. We pair each individual message with its parent value so
+    contact name / wa_id are accessible during normalization.
     """
-    key = data.get("key") or {}
-
-    # Real-phone JID fields, checked in priority order
-    for field in ("senderPn", "participantPn"):
-        for source in (key, data):
-            val = source.get(field)
-            if val:
-                local = val.split("@")[0] if "@" in val else val
-                if local and local.isdigit():
-                    return local
-
-    remote = key.get("remoteJid") or ""
-    if not remote:
-        return None
-
-    # WhatsApp groups arrive with `<id>@g.us`. The bot is a 1:1 ordering
-    # assistant — drop group traffic so we don't create stale "Sem nome"
-    # customer rows for every notification group the number is added to.
-    if remote.endswith("@g.us") or remote.endswith("@broadcast"):
-        return None
-
-    # If the JID is an LID, keep it as-is. Modern WhatsApp routes 1:1 chats
-    # with @lid JIDs by default; reply paths must echo the same LID back.
-    # Our custom Evolution image (evolution/Dockerfile) patches the outbound
-    # validator so sendText/sendMedia accept `<id>@lid` recipients.
-    if remote.endswith("@lid"):
-        return remote
-
-    return remote.split("@")[0] or None
+    out: list[tuple[dict, dict]] = []
+    for entry in event.get("entry") or []:
+        for change in entry.get("changes") or []:
+            value = change.get("value") or {}
+            for msg in value.get("messages") or []:
+                out.append((value, msg))
+    return out
 
 
-def _extract_text(data: dict) -> Optional[str]:
-    msg = data.get("message") or {}
-    return (
-        msg.get("conversation")
-        or (msg.get("extendedTextMessage") or {}).get("text")
-        or (msg.get("buttonsResponseMessage") or {}).get("selectedDisplayText")
-        or (msg.get("listResponseMessage") or {}).get("title")
-    )
-
-
-def _extract_audio_id(data: dict) -> Optional[str]:
-    msg = data.get("message") or {}
-    if "audioMessage" in msg:  # value can be {} — presence is what matters
-        return (data.get("key") or {}).get("id")
-    return None
-
-
-def _extract_image_id(data: dict) -> Optional[str]:
-    """Return the message id when this is an inbound image, else None.
-
-    The actual bytes are fetched separately via wa_client.download_media.
-    """
-    msg = data.get("message") or {}
-    if "imageMessage" in msg:
-        return (data.get("key") or {}).get("id")
-    return None
-
-
-def _extract_image_caption(data: dict) -> Optional[str]:
-    msg = data.get("message") or {}
-    img = msg.get("imageMessage") or {}
-    cap = img.get("caption")
-    return cap.strip() if isinstance(cap, str) and cap.strip() else None
-
-
-def _extract_location(data: dict) -> Optional[tuple[float, float]]:
-    """Pull (lat, lng) from a WhatsApp shared-location message, if present.
-
-    Evolution forwards both static pins (`locationMessage`) and live shares
-    (`liveLocationMessage`). Both shapes carry degreesLatitude/degreesLongitude.
-    """
-    msg = data.get("message") or {}
-    for key in ("locationMessage", "liveLocationMessage"):
-        loc = msg.get(key)
-        if loc:
-            try:
-                lat = float(loc.get("degreesLatitude"))
-                lng = float(loc.get("degreesLongitude"))
-                return lat, lng
-            except (TypeError, ValueError):
-                return None
+def _push_name(value: dict, wa_id: str) -> Optional[str]:
+    for c in value.get("contacts") or []:
+        if c.get("wa_id") == wa_id:
+            name = ((c.get("profile") or {}).get("name") or "").strip()
+            return name or None
     return None
 
 
 def _verify_signature(raw_body: bytes, header_signature: Optional[str]) -> bool:
+    """HMAC-SHA256 of the raw body against META_APP_SECRET.
+
+    Meta's signature is `sha256=<hex>`. Without the secret configured we
+    skip verification (dev mode), but in prod always set
+    META_APP_SECRET — without it anyone who guesses your webhook URL can
+    inject fake messages.
     """
-    Verify HMAC-SHA256 of the raw body against EVOLUTION_WEBHOOK_SECRET.
-    If the secret is not configured, verification is skipped (returns True).
-    Header format: "sha256=<hex>" or just the hex digest.
-    """
-    secret = settings.evolution_webhook_secret
+    secret = settings.meta_app_secret
     if not secret:
         return True
     if not header_signature:
@@ -131,65 +86,45 @@ def _verify_signature(raw_body: bytes, header_signature: Optional[str]) -> bool:
     return hmac.compare_digest(sent.lower(), expected.lower())
 
 
-async def _process(event: dict) -> None:
-    event_type = event.get("event") or event.get("eventType")
+# ---------- per-message processing ----------
 
-    # chats.update / contacts.update / presence.update arrive with `data` as a
-    # list of objects, not a dict — only message events have a key/message
-    # shape. Bail before touching .get() so we don't AttributeError on those.
-    if event_type and "message" not in event_type.lower():
-        log.info("webhook _process: skipping non-message event %s", event_type)
-        return
-
-    data = event.get("data") or {}
-    if not isinstance(data, dict):
-        log.info("webhook _process: data not a dict (%s) — drop", type(data).__name__)
-        return
-    key = data.get("key") or {}
-    log.info(
-        "webhook _process: event=%s fromMe=%s remoteJid=%s msgId=%s",
-        event_type, key.get("fromMe"), key.get("remoteJid"), key.get("id"),
-    )
-
-    if key.get("fromMe"):
-        log.info("webhook _process: skipping fromMe (own message)")
-        return
-
-    phone = _extract_phone(data)
+async def _process_one(value: dict, msg: dict) -> None:
+    """Normalize one Meta message and dispatch to the bot pipeline."""
+    msg_id = msg.get("id")
+    msg_type = msg.get("type")
+    phone = msg.get("from")  # already digits-only E.164
     if not phone:
-        log.info("webhook _process: phone unresolved (LID/group/empty) — drop")
+        log.info("webhook: drop message with no `from`")
         return
-    log.info("webhook _process: resolved phone=%s, dispatching to ai_engine", phone)
 
-    # Mark the inbound message as read before any processing — gives the
-    # customer the blue checkmarks immediately, which a real attendant would
-    # do as soon as they pick up the chat. Strong anti-bot signal: bots that
-    # never deliver read receipts are trivial for WhatsApp to fingerprint.
-    remote_jid = key.get("remoteJid")
-    msg_id = key.get("id")
-    if remote_jid and msg_id:
-        await wa_client.mark_as_read(remote_jid, msg_id)
+    log.info("webhook: msg id=%s type=%s from=%s", msg_id, msg_type, phone)
 
-    text = _extract_text(data)
-    audio_id = _extract_audio_id(data)
-    image_id = _extract_image_id(data)
-    location = _extract_location(data)
+    # Mark read immediately — anti-bot signal + better customer UX.
+    if msg_id:
+        await wa_client.mark_as_read(msg_id)
 
+    text: Optional[str] = None
     media_url: Optional[str] = None
     media_type: Optional[str] = None
+    is_audio = False
 
-    if audio_id and not text:
-        audio_bytes = await wa_client.download_media(audio_id)
+    if msg_type == "text":
+        text = ((msg.get("text") or {}).get("body") or "").strip() or None
+
+    elif msg_type == "audio":
+        # Meta voice notes are ogg/opus; transcribe via the existing
+        # audio service. Save the original blob for the admin viewer.
+        is_audio = True
+        media_id = (msg.get("audio") or {}).get("id")
+        audio_bytes = await wa_client.download_media(media_id) if media_id else None
         if audio_bytes:
-            # Save the original voice note so the admin chat viewer can
-            # play it, then transcribe for the AI.
             try:
                 from app.services.chat_media import save_chat_media
                 media_url, _ = save_chat_media(
                     audio_bytes,
                     media_type="audio",
                     content_type="audio/ogg",
-                    filename=f"{audio_id}.ogg",
+                    filename=f"{media_id}.ogg",
                 )
                 media_type = "audio"
             except Exception as e:
@@ -202,40 +137,42 @@ async def _process(event: dict) -> None:
             )
             return
 
-    if image_id:
-        # Save the inbound image so the operator can see it. The bot itself
-        # treats the image as a synthetic [IMAGEM] turn — GPT-4o doesn't get
-        # vision here; if the customer sends a pizza photo we just route to
-        # human handoff after the bot's polite acknowledgement.
-        img_bytes = await wa_client.download_media(image_id)
+    elif msg_type == "image":
+        # Bot doesn't do vision; we save the image so the operator sees
+        # it, then route through the bot's normal text flow with caption
+        # (or a synthetic [IMAGEM ENVIADA] tag) so it can decide whether
+        # to reply or hand off.
+        img = msg.get("image") or {}
+        media_id = img.get("id")
+        img_bytes = await wa_client.download_media(media_id) if media_id else None
         if img_bytes:
             try:
                 from app.services.chat_media import save_chat_media
                 media_url, _ = save_chat_media(
                     img_bytes,
                     media_type="image",
-                    content_type="image/jpeg",
-                    filename=f"{image_id}.jpg",
+                    content_type=img.get("mime_type") or "image/jpeg",
+                    filename=f"{media_id}.jpg",
                 )
                 media_type = "image"
             except Exception as e:
                 log.warning("save inbound image failed: %s", e)
-        caption = _extract_image_caption(data)
-        if not text:
-            text = caption or "[IMAGEM ENVIADA]"
+        caption = (img.get("caption") or "").strip() or None
+        text = caption or "[IMAGEM ENVIADA]"
 
-    # Location pin: write coords directly into the conversation cart, then
-    # feed a synthetic turn to the bot so it can confirm with the customer
-    # and continue the order. The bot's system prompt already covers the
-    # "needs_location_pin" + "delivery_lat" branches.
-    if location is not None:
-        lat, lng = location
+    elif msg_type == "location":
+        loc = msg.get("location") or {}
+        try:
+            lat = float(loc.get("latitude"))
+            lng = float(loc.get("longitude"))
+        except (TypeError, ValueError):
+            log.info("webhook: location missing coords — drop")
+            return
         from app.services import conversation_state as state_svc
         state = await state_svc.get_state(phone)
         cart = state.setdefault("cart", {"items": []})
         cart["delivery_lat"] = lat
         cart["delivery_lng"] = lng
-        # Once we have the pin we no longer need to ask for it.
         cart["needs_location_pin"] = False
         await state_svc.set_state(phone, state)
         synthetic = f"[LOCALIZAÇÃO COMPARTILHADA: lat={lat}, lng={lng}]"
@@ -245,16 +182,30 @@ async def _process(event: dict) -> None:
             await wa_client.send_text(phone, reply)
         return
 
+    elif msg_type == "interactive":
+        # Reply from a list/button message. We don't currently send
+        # those (legacy from Evolution); fall through with the title
+        # text if it ever arrives.
+        inter = msg.get("interactive") or {}
+        if "button_reply" in inter:
+            text = (inter["button_reply"] or {}).get("title")
+        elif "list_reply" in inter:
+            text = (inter["list_reply"] or {}).get("title")
+
+    else:
+        log.info("webhook: unsupported msg type=%s — drop", msg_type)
+        return
+
     if not text:
         return
 
-    push_name = (data.get("pushName") or "").strip() or None
+    push_name = _push_name(value, phone)
     async with AsyncSessionLocal() as db:
         reply = await process_incoming(
             db,
             phone=phone,
             text=text,
-            is_audio=bool(audio_id),
+            is_audio=is_audio,
             media_url=media_url,
             media_type=media_type,
             push_name=push_name,
@@ -263,21 +214,58 @@ async def _process(event: dict) -> None:
         await wa_client.send_text(phone, reply)
 
 
-@router.post("/evolution")
-@router.post("/evolution/{event_path:path}")
-@limiter.limit("100/minute")
-async def evolution_webhook(request: Request, bg: BackgroundTasks, event_path: str = ""):
-    # Evolution v2.2.3 appends the event name to the configured URL (e.g.
-    # `/messages-upsert`) regardless of WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=false.
-    # Accept any suffix; the event name is also in the JSON body.
-    raw = await request.body()
-    log.info(
-        "webhook arrived: path=/evolution/%s body_bytes=%d ct=%s",
-        event_path, len(raw), request.headers.get("content-type"),
+async def _handle_safely(event: dict) -> None:
+    try:
+        for value, msg in _extract_message_envelope(event):
+            try:
+                await _process_one(value, msg)
+            except Exception:
+                log.exception("webhook _process_one failed for msg %s", msg.get("id"))
+        # Statuses (delivered / read / failed) — log and skip for now.
+        for entry in event.get("entry") or []:
+            for change in entry.get("changes") or []:
+                statuses = (change.get("value") or {}).get("statuses") or []
+                for s in statuses:
+                    log.info(
+                        "webhook status: id=%s status=%s recipient=%s",
+                        s.get("id"), s.get("status"), s.get("recipient_id"),
+                    )
+    except Exception:
+        log.exception("webhook _handle_safely failed")
+
+
+# ---------- HTTP routes ----------
+
+@router.get("/meta", response_class=PlainTextResponse)
+async def meta_verify(
+    hub_mode: Optional[str] = Query(default=None, alias="hub.mode"),
+    hub_challenge: Optional[str] = Query(default=None, alias="hub.challenge"),
+    hub_verify_token: Optional[str] = Query(default=None, alias="hub.verify_token"),
+):
+    """Meta webhook handshake. Echo `hub.challenge` if token matches."""
+    expected = settings.meta_verify_token
+    if (
+        hub_mode == "subscribe"
+        and expected
+        and hub_verify_token == expected
+        and hub_challenge is not None
+    ):
+        log.info("webhook: meta verify OK")
+        return hub_challenge
+    log.warning(
+        "webhook: meta verify failed (mode=%s token_match=%s)",
+        hub_mode, hub_verify_token == expected,
     )
-    sig = request.headers.get("x-hub-signature-256") or request.headers.get("x-signature")
+    raise HTTPException(status_code=403, detail="verification failed")
+
+
+@router.post("/meta")
+@limiter.limit("200/minute")
+async def meta_webhook(request: Request, bg: BackgroundTasks):
+    raw = await request.body()
+    sig = request.headers.get("x-hub-signature-256")
     if not _verify_signature(raw, sig):
-        log.warning("webhook signature mismatch")
+        log.warning("webhook: meta signature mismatch")
         raise HTTPException(status_code=401, detail="invalid signature")
 
     try:
@@ -285,12 +273,13 @@ async def evolution_webhook(request: Request, bg: BackgroundTasks, event_path: s
     except Exception:
         return {"ok": False, "reason": "invalid-json"}
 
+    if body.get("object") != "whatsapp_business_account":
+        log.info("webhook: ignoring non-WABA event object=%s", body.get("object"))
+        return {"ok": True}
+
+    log.info(
+        "webhook: meta event accepted entries=%d",
+        len(body.get("entry") or []),
+    )
     bg.add_task(_handle_safely, body)
     return {"ok": True}
-
-
-async def _handle_safely(event: dict) -> None:
-    try:
-        await _process(event)
-    except Exception:
-        log.exception("webhook processing failed")

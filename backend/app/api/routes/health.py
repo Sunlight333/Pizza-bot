@@ -44,32 +44,35 @@ async def _check_redis() -> dict:
         return {"ok": False, "error": str(e)}
 
 
-async def _check_evolution() -> dict:
+async def _check_whatsapp() -> dict:
     """
-    "OK" means WhatsApp is actually paired and online — i.e. Evolution
-    reports `state == "open"`. The container being reachable is not enough:
-    while the bot is in `connecting` / `close` no message will deliver, so
-    the dashboard should reflect that as not-OK.
+    Health check for Meta Cloud API. There's no "is the number paired"
+    state to query — the WABA-phone binding is permanent. We probe the
+    phone-number resource as a credentials sanity check (it returns the
+    display number + verified name when the token has access). A 200
+    means token + phone_number_id are good and Meta is reachable.
     """
-    if not settings.evolution_api_url:
+    if not settings.meta_access_token or not settings.meta_phone_number_id:
         return {"ok": False, "error": "not configured"}
+    url = (
+        f"https://graph.facebook.com/{settings.meta_graph_version}/"
+        f"{settings.meta_phone_number_id}"
+    )
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             r = await client.get(
-                f"{settings.evolution_api_url.rstrip('/')}/instance/connectionState/{settings.evolution_instance_name}",
-                headers={"apikey": settings.evolution_api_key},
+                url,
+                headers={"Authorization": f"Bearer {settings.meta_access_token}"},
             )
-        if r.status_code >= 500:
-            return {"ok": False, "error": f"http {r.status_code}"}
-        data = r.json() if "application/json" in r.headers.get("content-type", "") else {}
-        body = data.get("instance", data) if isinstance(data, dict) else {}
-        state = body.get("state") or body.get("connectionStatus") or "unknown"
-        state = str(state).lower()
-        if state == "open":
-            return {"ok": True, "state": state}
-        # "connecting", "close", "unknown" — surface the state as the
-        # error label so the dashboard renders it directly.
-        return {"ok": False, "state": state, "error": state}
+        if r.status_code == 200:
+            j = r.json()
+            return {
+                "ok": True,
+                "display_phone_number": j.get("display_phone_number"),
+                "verified_name": j.get("verified_name"),
+                "quality_rating": j.get("quality_rating"),
+            }
+        return {"ok": False, "error": f"http {r.status_code}", "body": r.text[:200]}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -94,10 +97,10 @@ async def _check_openai() -> dict:
 
 @router.get("/health/detailed")
 async def health_detailed(db: AsyncSession = Depends(get_db)):
-    postgres, redis_s, evolution, bridge_s, openai_s = await asyncio.gather(
+    postgres, redis_s, whatsapp, bridge_s, openai_s = await asyncio.gather(
         _check_postgres(db),
         _check_redis(),
-        _check_evolution(),
+        _check_whatsapp(),
         _check_bridge(),
         _check_openai(),
     )
@@ -106,7 +109,7 @@ async def health_detailed(db: AsyncSession = Depends(get_db)):
         "status": "ok" if all_ok else "degraded",
         "postgres": postgres,
         "redis": redis_s,
-        "evolution": evolution,
+        "whatsapp": whatsapp,
         "bridge": bridge_s,
         "openai": openai_s,
     }

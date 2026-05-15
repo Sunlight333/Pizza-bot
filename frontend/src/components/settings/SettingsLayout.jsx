@@ -15,9 +15,9 @@ import { useAuthStore } from '@/stores/auth'
  * Settings page shell — left sub-sidebar + content area.
  *
  * The Configurações section used to be one long scroll of every panel.
- * Now each concern (Datacaixa sync, WhatsApp pairing, bot persona, menu
- * fallback images, user management, profile) gets its own sub-page so
- * the operator can find what they need at a glance.
+ * Now each concern (Datacaixa sync, WhatsApp Cloud API credentials, bot
+ * persona, menu fallback images, user management, profile) gets its own
+ * sub-page so the operator can find what they need at a glance.
  *
  * Items hidden by role:
  *   - Usuários: only role=admin sees this
@@ -30,7 +30,7 @@ import { useAuthStore } from '@/stores/auth'
 const ITEMS = [
   { to: 'dashboard',     label: 'Visão geral',           icon: LayoutDashboard, role: null },
   { to: 'datacaixa',     label: 'Datacaixa',             icon: FileSpreadsheet, role: null },
-  { to: 'evolution',     label: 'WhatsApp / Evolution',  icon: MessageCircle,   role: null },
+  { to: 'whatsapp',      label: 'WhatsApp (Meta)',       icon: MessageCircle,   role: null },
   { to: 'bot',           label: 'Bot',                   icon: Bot,             role: null },
   { to: 'menu-images',   label: 'Imagens do cardápio',   icon: ImageIcon,       role: null },
   { to: 'users',         label: 'Usuários',              icon: UsersIcon,       role: 'admin' },

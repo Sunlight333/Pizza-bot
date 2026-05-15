@@ -16,7 +16,7 @@ const resolveMedia = (url) =>
 /**
  * Simulator: drives the same ai_engine.process_incoming() the real WhatsApp
  * webhook uses, but routes the bot's reply back to the panel instead of sending
- * it via Evolution. Lets the operator run the Step-12 scenarios end-to-end
+ * it through Meta. Lets the operator run the Step-12 scenarios end-to-end
  * without needing a paired WhatsApp number.
  */
 export default function BotSimulator() {

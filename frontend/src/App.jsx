@@ -39,7 +39,7 @@ import Conversations from '@/pages/Conversations'
 import SettingsLayout from '@/components/settings/SettingsLayout'
 import SettingsDashboard from '@/pages/settings/SettingsDashboard'
 import SettingsDatacaixa from '@/pages/settings/SettingsDatacaixa'
-import SettingsEvolution from '@/pages/settings/SettingsEvolution'
+import SettingsWhatsApp from '@/pages/settings/SettingsWhatsApp'
 import SettingsBot from '@/pages/settings/SettingsBot'
 import SettingsMenuImages from '@/pages/settings/SettingsMenuImages'
 import SettingsUsers from '@/pages/settings/SettingsUsers'
@@ -118,7 +118,9 @@ export default function App() {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<SettingsDashboard />} />
           <Route path="datacaixa" element={<SettingsDatacaixa />} />
-          <Route path="evolution" element={<SettingsEvolution />} />
+          <Route path="whatsapp" element={<SettingsWhatsApp />} />
+          {/* Legacy /admin/settings/evolution → /admin/settings/whatsapp */}
+          <Route path="evolution" element={<Navigate to="../whatsapp" replace />} />
           <Route path="bot" element={<SettingsBot />} />
           <Route path="menu-images" element={<SettingsMenuImages />} />
           <Route path="users" element={<SettingsUsers />} />

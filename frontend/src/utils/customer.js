@@ -1,17 +1,15 @@
 /**
  * Shared rendering helpers for customer identity in the panel.
  *
- * Modern WhatsApp routes 1:1 chats with `<id>@lid` JIDs (privacy protocol).
- * The real phone is never delivered, and Evolution v2.2.x has no
- * LID-to-phone mapping, so the LID is the only stable identifier we
- * have. These helpers turn that into something an operator can read at
- * a glance: pushName when known, otherwise `Anônimo · #<last-6>`.
+ * Meta Cloud API delivers digits-only E.164 in `wa_id` / `from`, so
+ * fresh conversations always have real phones. Some legacy rows still
+ * carry `<id>@lid` JIDs from the Evolution era — these helpers turn
+ * either into something an operator can read at a glance: pushName
+ * when known, otherwise the phone or `Anônimo · #<last-6>`.
  *
  * Use them ANYWHERE the panel surfaces a customer phone or name —
  * conversation list, chat header, customers grid, live order feed,
- * orders table, global search. Keeping the formatting in one place
- * means a future Evolution upgrade that resolves LIDs only needs to
- * touch this file.
+ * orders table, global search.
  */
 
 const isLid = (s) => typeof s === 'string' && s.endsWith('@lid')
