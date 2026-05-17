@@ -14,10 +14,9 @@ POST /api/webhook/meta — incoming events. The body is HMAC-SHA256
      bot pipeline. Always returns 200 fast — Meta retries aggressively
      on non-2xx and that turns into duplicate orders.
 
-Notes vs the old Evolution webhook:
-- No more LID / @lid quirks. Cloud API gives us digits-only E.164 in
-  `wa_id` and `from`. Group / broadcast traffic doesn't reach this
-  endpoint at all.
+Notes:
+- Cloud API gives us digits-only E.164 in `wa_id` and `from`. Group /
+  broadcast traffic doesn't reach this endpoint at all.
 - Audio + image arrive as media_id only; we fetch bytes via the
   WhatsApp client.
 - Statuses (delivered/read/failed) arrive too — we currently log and
@@ -183,9 +182,9 @@ async def _process_one(value: dict, msg: dict) -> None:
         return
 
     elif msg_type == "interactive":
-        # Reply from a list/button message. We don't currently send
-        # those (legacy from Evolution); fall through with the title
-        # text if it ever arrives.
+        # Reply from a list/button message. The bot doesn't currently
+        # send interactive messages, but we handle inbound replies in case
+        # an admin sends one from the panel in the future.
         inter = msg.get("interactive") or {}
         if "button_reply" in inter:
             text = (inter["button_reply"] or {}).get("title")

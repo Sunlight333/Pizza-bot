@@ -132,8 +132,6 @@ export default function App() {
           <Route path="dashboard" element={<SettingsDashboard />} />
           <Route path="datacaixa" element={<SettingsDatacaixa />} />
           <Route path="whatsapp" element={<SettingsWhatsApp />} />
-          {/* Legacy /admin/settings/evolution → /admin/settings/whatsapp */}
-          <Route path="evolution" element={<Navigate to="../whatsapp" replace />} />
           <Route path="bot" element={<SettingsBot />} />
           <Route path="menu-images" element={<SettingsMenuImages />} />
           <Route path="users" element={<SettingsUsers />} />

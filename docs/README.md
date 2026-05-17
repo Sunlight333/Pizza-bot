@@ -12,7 +12,6 @@ docker compose up --build
 
 - Backend: http://localhost:8000 (health: `/api/health`, detailed: `/api/health/detailed`)
 - Frontend: http://localhost:5173
-- Evolution API (start with `--profile full`): http://localhost:8080
 - Postgres: `localhost:5432`
 - Redis: `localhost:6379`
 
@@ -27,13 +26,13 @@ Creates:
 - 15 pizza flavors (salgadas + doces), drinks, sides
 - 6 sample delivery zones
 
-### With Evolution API (WhatsApp)
+### WhatsApp setup (Meta WhatsApp Cloud API)
 
-```bash
-docker compose --profile full up
-```
+The bot uses Meta WhatsApp Cloud API exclusively. To wire it up:
 
-Open http://localhost:8080 to scan the QR code. The webhook is auto-pointed at `backend:8000/api/webhook/evolution`.
+1. In Meta Business Settings → System users, create a system user and generate a permanent access token with `whatsapp_business_messaging` + `whatsapp_business_management` scopes.
+2. In App Dashboard → WhatsApp → Configuration, set the webhook URL to `https://YOUR_DOMAIN/api/webhook/meta` and subscribe to the `messages` field.
+3. Populate `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, and `WHATSAPP_APP_SECRET` in `.env`.
 
 ## Layout
 
@@ -70,13 +69,13 @@ nginx/     Reverse proxy config (prod)
 | 3 | Delivery zones with `pg_trgm` fuzzy match (accent/typo tolerant) | ✅ |
 | 4 | Customer lookup + profile + order history | ✅ |
 | 5 | Order CRUD + stats + WebSocket live feed + Dashboard | ✅ |
-| 6 | Evolution API client + webhook + Redis conv state + Whisper audio | ✅ |
+| 6 | Meta WhatsApp Cloud API client + webhook + Redis conv state + Whisper audio | ✅ |
 | 7 | GPT-4o function calling (10 tools) + state machine + handoff | ✅ |
 | 8 | Datacaixa `.txt` generator + bridge HTTP API + Windows bridge service | ✅ |
 | 9 | Structured JSON logging + detailed health + notification service | ✅ |
 | 10 | Frontend polish (OrderGlobe, ParticleBackground, heatmap) | ⏳ deferred |
 | 11 | Rate limiting (slowapi), nginx config, prod compose, pytest core tests | ✅ |
-| 12 | E2E integration test | ⏳ needs real Evolution + Datacaixa |
+| 12 | E2E integration test | ⏳ needs real WhatsApp Cloud + Datacaixa |
 
 ## Testing
 
@@ -123,7 +122,7 @@ files into Datacaixa's `Integração\Pedidos` folder. Confirm sync via `/api/bri
 3. **Cupom fiscal emission** — the Datacaixa import stages a sale; confirm with Gabriel whether NFCe/SAT emits automatically or a human still clicks something.
 4. **Half-pizza rule confirmed as MAX** — matches BR standard; re-confirm with Marcio if he uses average.
 5. **CPF-na-nota flow** — `Product.csosn/ncm/etc` columns are in place but the bot currently doesn't ask; easy to add to the system prompt.
-6. **No E2E test with real hardware** — planned for Step 12, blocked on Evolution + Datacaixa PC setup.
+6. **No E2E test with real hardware** — planned for Step 12, blocked on Meta WhatsApp Cloud + Datacaixa PC setup.
 7. **OpenAI cost** — estimated ~R$1,200/mo at 2,400 orders/mo with GPT-4o on every turn. This is the *client's* recurring cost, not in R$6K scope. Consider GPT-4o-mini for greetings.
 8. **LGPD** — 6,000 phone numbers stored; no retention policy or DSAR flow yet. Low immediate risk, real legal risk.
 

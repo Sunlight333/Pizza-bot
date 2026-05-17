@@ -12,8 +12,8 @@ import { api } from '@/services/api'
 /**
  * WhatsApp Cloud API (Meta) settings panel.
  *
- * Replaces the old Evolution + QR-pairing flow. With Cloud API the
- * phone-WABA binding is permanent at Meta, so there's nothing to pair —
+ * Cloud API has no QR pairing — the phone-WABA binding is permanent
+ * at Meta, so there's nothing to pair from this panel —
  * the panel only shows credential health + lets the operator send a
  * test message to verify outbound works end-to-end.
  *

@@ -1,8 +1,8 @@
 """Pure-function tests for Meta WhatsApp Cloud API webhook parsing.
 
-Replaces the old Evolution-era test_webhook_parsing.py. Meta's envelope
-is `entry[].changes[].value.messages[]` rather than Evolution's flat
-`{key, message}` shape, so the helper functions are different.
+Meta's envelope is `entry[].changes[].value.messages[]`. These tests
+exercise the structural helpers that pull individual messages out and
+attach the contact `pushName` for the AI engine.
 
 The full _process_one path can't be unit-tested without mocking the
 WhatsApp client + DB session + AI engine; those are integration concerns

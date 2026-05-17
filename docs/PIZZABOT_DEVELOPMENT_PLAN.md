@@ -63,36 +63,34 @@ Loss of sales during peak hours (Friday–Sunday) due to slow manual WhatsApp re
 
 ### Architecture Overview
 ```
-┌─────────────────────┐     ┌──────────────────────────────────────┐
-│   Customer Phone    │     │           VPS (Cloud)                │
-│   (WhatsApp)        │◄───►│  ┌──────────────┐  ┌─────────────┐  │
-└─────────────────────┘     │  │ Evolution API │  │   FastAPI    │  │
-                            │  │  (Docker)     │──│   Backend    │  │
-                            │  └──────────────┘  │  + AI Layer  │  │
-                            │                     │  + WebSocket │  │
-                            │  ┌──────────────┐  └──────┬──────┘  │
-                            │  │  PostgreSQL   │         │         │
-                            │  │  + Redis      │─────────┘         │
-                            │  └──────────────┘                    │
-                            │  ┌──────────────┐  ┌─────────────┐  │
-                            │  │ React.js     │  │ Uptime Kuma │  │
-                            │  │ Admin Panel  │  │ (Monitor)   │  │
-                            │  └──────────────┘  └─────────────┘  │
-                            └──────────────┬───────────────────────┘
-                                           │ HTTPS API
-                            ┌──────────────▼───────────────────────┐
-                            │        Pizzeria PC (Windows)         │
-                            │  ┌──────────────┐  ┌─────────────┐  │
-                            │  │ Bridge App   │  │ Datacaixa   │  │
-                            │  │ (Python)     │──│ PDV         │  │
-                            │  │ writes .txt  │  │ imports .txt│  │
-                            │  └──────┬───────┘  └─────────────┘  │
-                            │         │ reads tax data             │
-                            │  ┌──────▼───────┐                   │
-                            │  │ Firebird DB  │                   │
-                            │  │ (read-only)  │                   │
-                            │  └──────────────┘                   │
-                            └──────────────────────────────────────┘
+┌─────────────────────┐     ┌──────────────────┐     ┌──────────────────────────────────┐
+│   Customer Phone    │◄───►│  Meta WhatsApp   │◄───►│           VPS (Cloud)            │
+│   (WhatsApp)        │     │  Cloud API       │     │  ┌────────────────────────────┐  │
+└─────────────────────┘     │  (Meta-hosted)   │     │  │   FastAPI Backend          │  │
+                            └──────────────────┘     │  │   + AI Layer + WebSocket   │  │
+                                                     │  └──────────────┬─────────────┘  │
+                                                     │  ┌──────────────┴─────────────┐  │
+                                                     │  │  PostgreSQL  +  Redis      │  │
+                                                     │  └────────────────────────────┘  │
+                                                     │  ┌──────────────┐ ┌────────────┐ │
+                                                     │  │ React.js     │ │ Uptime     │ │
+                                                     │  │ Admin Panel  │ │ Kuma       │ │
+                                                     │  └──────────────┘ └────────────┘ │
+                                                     └──────────────┬───────────────────┘
+                                                                    │ HTTPS API
+                                                     ┌──────────────▼───────────────────┐
+                                                     │     Pizzeria PC (Windows)        │
+                                                     │  ┌──────────────┐ ┌────────────┐ │
+                                                     │  │ Bridge App   │ │ Datacaixa  │ │
+                                                     │  │ (Python)     │─│ PDV        │ │
+                                                     │  │ writes .txt  │ │ imports txt│ │
+                                                     │  └──────┬───────┘ └────────────┘ │
+                                                     │         │ reads tax data         │
+                                                     │  ┌──────▼───────┐                │
+                                                     │  │ Firebird DB  │                │
+                                                     │  │ (read-only)  │                │
+                                                     │  └──────────────┘                │
+                                                     └──────────────────────────────────┘
 ```
 
 ---
@@ -117,13 +115,13 @@ Loss of sales during peak hours (Friday–Sunday) due to slow manual WhatsApp re
 - **Redis 7** — session cache, message queue, rate limiting
 - **Celery** — async task queue (audio processing, .txt generation)
 - **OpenAI Python SDK** — Whisper, GPT-4o, TTS
-- **httpx** — Evolution API communication
+- **httpx** — Meta WhatsApp Cloud API communication
 - **Pydantic v2** — request/response validation
 - **python-jose** + **passlib** — JWT auth
 - **WebSocket** — real-time order updates to admin panel
 
 ### WhatsApp
-- **Evolution API v2** (self-hosted, Docker)
+- **Meta WhatsApp Cloud API** (Meta-hosted, official Business Platform)
 
 ### POS Bridge (Windows service on pizzeria PC)
 - **Python 3.12** — lightweight Windows service
@@ -184,7 +182,7 @@ pizzabot/
 │   │   │   └── settings/
 │   │   │       ├── BotPersonality.jsx
 │   │   │       ├── WorkingHours.jsx
-│   │   │       ├── EvolutionConfig.jsx
+│   │   │       ├── MetaWhatsAppConfig.jsx
 │   │   │       └── DatacaixaSync.jsx
 │   │   ├── pages/
 │   │   │   ├── Dashboard.jsx
@@ -297,8 +295,9 @@ BACKEND (FastAPI):
 - Set up SQLAlchemy async with PostgreSQL connection
 - Set up Alembic for migrations
 - Create config.py with Pydantic Settings (reads from .env):
-  DATABASE_URL, REDIS_URL, OPENAI_API_KEY, EVOLUTION_API_URL,
-  EVOLUTION_API_KEY, JWT_SECRET, CORS_ORIGINS
+  DATABASE_URL, REDIS_URL, OPENAI_API_KEY, WHATSAPP_ACCESS_TOKEN,
+  WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_VERIFY_TOKEN, WHATSAPP_APP_SECRET,
+  JWT_SECRET, CORS_ORIGINS
 - Create all database models with SQLAlchemy:
 
   Customer: id, phone (unique, indexed), name, cpf (nullable),
@@ -492,20 +491,23 @@ FRONTEND:
 
 ---
 
-### STEP 6 — Evolution API Integration + WhatsApp Engine
+### STEP 6 — Meta WhatsApp Cloud API Integration + WhatsApp Engine
 
 ```
-Build Evolution API integration and message handling.
+Build Meta WhatsApp Cloud API integration and message handling.
 
 BACKEND:
 - WhatsApp service (services/whatsapp.py):
-  EvolutionClient: send_text, send_buttons, send_list, send_media,
-  download_media, get_instance_status
-  Retry logic, rate limiting
+  WhatsAppClient: send_text, send_interactive_buttons, send_interactive_list,
+  send_media, send_template, download_media (via /v20.0/{media_id}),
+  get_phone_number_status
+  Retry logic, exponential backoff on Meta error codes, per-second rate limiting
 
-- Webhook route POST /api/webhook/evolution:
-  Parse event types (message, ack, connection)
-  Extract: phone, text, media_id, selected option
+- Webhook route POST /api/webhook/meta:
+  Verify X-Hub-Signature-256 against WHATSAPP_APP_SECRET
+  Handle GET verification challenge (hub.verify_token)
+  Parse Meta webhook payload (entry[].changes[].value.messages[])
+  Extract: phone (wa_id), text, media_id, button/list reply id
   Route to conversation handler
   Return 200 immediately, process async via Celery
 
@@ -519,11 +521,9 @@ BACKEND:
   handles ogg/opus, fallback message on failure
 
 FRONTEND:
-- Settings > EvolutionConfig.jsx: URL, API key, test connection,
-  QR code display, status indicator, webhook URL copy
-
-DOCKER:
-- Add Evolution API service: atendai/evolution-api:v2.1.1
+- Settings > MetaWhatsAppConfig.jsx: phone_number_id, access token (masked),
+  webhook URL display (copy button), Meta connection status indicator,
+  approved templates list.
 ```
 
 ---
@@ -629,7 +629,7 @@ BACKEND:
 - Notification service: admin WhatsApp alerts for:
   bridge offline >5min, bot errors, sync failures, handoff requests,
   daily summary
-- GET /api/health/detailed: checks postgres, redis, evolution,
+- GET /api/health/detailed: checks postgres, redis, WhatsApp Cloud API,
   bridge, openai
 
 DOCKER:
@@ -751,7 +751,7 @@ Fix all issues before deployment.
 | Decision | Choice | Reason |
 |----------|--------|--------|
 | Bot framework | Custom FastAPI + GPT-4o (NOT n8n) | Client hated menu bots; n8n too rigid for complex pizza ordering state machine |
-| WhatsApp | Evolution API v2 (self-hosted) | Client's choice, open source, no per-message cost |
+| WhatsApp | Meta WhatsApp Cloud API (official) | Meta-hosted, signed templates, no QR/session drift, free 1k service conversations/mo tier |
 | POS integration | .txt file via bridge app | Only method Datacaixa supports (confirmed with their tech support) |
 | AI model | GPT-4o (complex) + GPT-4o-mini (simple turns) | Cost optimization: ~70% of turns are greetings/confirmations |
 | Audio | OpenAI Whisper API | Client specifically requested audio understanding |

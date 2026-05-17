@@ -40,7 +40,7 @@ What ships today (admin panel pages):
 - **Clientes** — customer profile and order history (read-mostly)
 - **Entrega** — zone CRUD with km-band pricing
 - **Conversas** — WhatsApp chat viewer with operator takeover
-- **Configurações** — bot persona, Evolution config, Datacaixa sync
+- **Configurações** — bot persona, WhatsApp Cloud API config, Datacaixa sync
 
 Backend services already in place: AI engine (GPT-4o function calling), audio
 transcription (Whisper), conversation state (Redis), Datacaixa `.txt` writer,
@@ -65,12 +65,12 @@ saved addresses, loyalty).
 
 **Scope.**
 - Public routes `/register`, `/login`, `/forgot-password`
-- Email + password OR phone + OTP (SMS via Evolution)
+- Email + password OR phone + OTP (delivered via Meta WhatsApp Cloud API)
 - Account model `CustomerAccount` linked to existing `Customer` via phone
 - Session via httpOnly JWT cookie
 - Email verification on signup; rate-limited password reset
 
-**Dependencies.** Existing `Customer` table; Evolution API for OTP.
+**Dependencies.** Existing `Customer` table; Meta WhatsApp Cloud API for OTP.
 
 ### 1.2 Public menu browsing · M
 **Why.** Customers should see the full menu — pizzas, sizes, crusts, extras,
@@ -154,7 +154,7 @@ contact individuals.
 - Edit customer profile (name, phone, addresses, notes)
 - Merge duplicate records (common after the same person uses two phones)
 - Tags / labels (VIP, complainer, business, etc.)
-- "Send message" action → opens a WhatsApp draft via Evolution
+- "Send message" action → opens a WhatsApp draft via the WhatsApp client
 - CSV export filtered by segment
 - Per-customer activity log (orders, conversations, complaints, refunds)
 
@@ -181,7 +181,7 @@ finally activate the customer base.
   message template + send time
 - LGPD: requires `marketing_opt_in=true` (collected on web signup, askable
   in-bot)
-- Rate-limited send via Evolution to avoid WhatsApp ban
+- Rate-limited send via the Meta WhatsApp Cloud API (template messages) to stay within Meta's messaging tiers
 - Per-campaign metrics: sent / delivered / replied / converted
 
 **Dependencies.** Segments (2.2).
@@ -310,7 +310,7 @@ re-prioritized behind the customer portal launch.
 ### 4.1 Multi-tenant / franchise mode · XL
 Sell the platform to other pizzarias. Each store has its own menu, zones,
 staff, Datacaixa instance, but shares the codebase. Per-tenant subdomain,
-isolated DB schema or RLS, per-tenant Evolution instance, billing.
+isolated DB schema or RLS, per-tenant Meta WhatsApp Cloud number, billing.
 
 ### 4.2 Voice ordering (phone calls) · L
 Twilio + Whisper + GPT-4o-realtime + TTS. Reuses `order_builder` and the
@@ -339,7 +339,7 @@ notifications and home-screen presence beyond what a PWA gives.
 Not user-visible, but compounds silently.
 
 ### Testing
-- E2E: real Evolution + Datacaixa pipeline. M
+- E2E: real Meta WhatsApp Cloud + Datacaixa pipeline. M
 - Integration tests for `ai_engine`: replay transcripts, assert tool calls. M
 - Frontend component tests (Vitest + Testing Library). M
 - E2E for the new web checkout flow once it lands. M

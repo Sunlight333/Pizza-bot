@@ -70,14 +70,15 @@ Login is "type your phone, receive a 6-digit code on WhatsApp, enter
 it." No email, no password, no SMS provider integration.
 
 **Why.** The announcement promises *"your phone number is your
-account."* Evolution is already wired and free; SMS providers cost money
-per message and add a vendor. Password auth adds reset-flow complexity
-the customer doesn't need (they're picking pizza, not online banking).
+account."* Meta WhatsApp Cloud API is already wired and only charges per
+template conversation; SMS providers cost money per message and add a
+vendor. Password auth adds reset-flow complexity the customer doesn't
+need (they're picking pizza, not online banking).
 
 **Implementation.** Reuse `services/whatsapp.py` to send the OTP through
-the existing Evolution instance. Code is 6 digits, 10-minute TTL stored
-in Redis under `otp:{phone}`. Three attempts then back-off. Rate-limit
-by phone *and* IP via `slowapi`.
+the Meta WhatsApp Cloud API (authentication-category template). Code is
+6 digits, 10-minute TTL stored in Redis under `otp:{phone}`. Three
+attempts then back-off. Rate-limit by phone *and* IP via `slowapi`.
 
 **Session.** httpOnly JWT cookie, 30-day refresh, signed with the same
 secret as admin but with a `customer` audience claim so admin and
@@ -206,8 +207,8 @@ GET  /api/customer/auth/me                                      -> 200 {customer
   JWT cookie, return the customer profile.
 - Cookie: `Secure; HttpOnly; SameSite=Lax; Domain=pedido.{domain}`.
 
-Dependency: `services/otp.py` (new) wrapping Redis storage and
-Evolution send.
+Dependency: `services/otp.py` (new) wrapping Redis storage and the
+Meta WhatsApp Cloud API send.
 
 ### 3.2 Menu (`customer/menu.py`)
 
@@ -463,8 +464,9 @@ desktop.
   `customer_account` (already by name today, but verify after the
   account model lands).
 - After a web order is placed, send a WhatsApp confirmation message via
-  Evolution with the tracking link — so customers who order on web also
-  see the order in their WhatsApp thread. One outbound, no chat tree.
+  the Meta WhatsApp Cloud API with the tracking link — so customers who
+  order on web also see the order in their WhatsApp thread. One outbound,
+  no chat tree.
 - Admin `Customers` page surfaces an "account registered on" date when
   applicable.
 
@@ -545,12 +547,13 @@ emitting fiscally. Mitigations:
 
 ### 7.2 OTP via WhatsApp fails silently
 
-If Evolution disconnects or rate-limits, customers can't log in.
+If the Meta WhatsApp Cloud API errors or throttles us, customers can't
+log in.
 
 - Show "code sent" optimistically but if no verify within 90s, surface
   "didn't get it? resend" with a 30s cooldown.
-- Health check on Evolution before accepting `request-otp`; if down,
-  return 503 with a clear message (not 204).
+- Health check on the WhatsApp Cloud API before accepting `request-otp`;
+  if down, return 503 with a clear message (not 204).
 - Log every send result; alert on > 5 failures in 5 min.
 
 ### 7.3 Identity reconciliation collisions

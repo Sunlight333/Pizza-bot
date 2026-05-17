@@ -197,10 +197,10 @@ async def send_admin_media(
 ):
     """
     Operator sends an image or voice note in a chat. Saves the file under
-    /media/chats/, ships it via Evolution (sendMedia for images, sendWhatsAppAudio
-    for voice notes), and persists a MessageRole.admin row referencing the URL
-    so the chat viewer can render it for both this admin and any other connected
-    operator over the websocket broadcast.
+    /media/chats/, ships it via the WhatsApp Cloud API (send_media for
+    images, send_audio for voice notes), and persists a MessageRole.admin
+    row referencing the URL so the chat viewer can render it for both
+    this admin and any other connected operator over the WebSocket broadcast.
     """
     if media_type not in ("image", "audio"):
         raise HTTPException(400, "media_type must be image or audio")

@@ -22,8 +22,8 @@ class Settings(BaseSettings):
 
     openai_api_key: str = Field(default="")
 
-    # Meta WhatsApp Cloud API. Replaces the old Evolution integration —
-    # set these in /opt/pizzabot/.env on the VPS. Token is a permanent
+    # Meta WhatsApp Cloud API — sole WhatsApp transport.
+    # Set these in /opt/pizzabot/.env on the VPS. Token is a permanent
     # System User token from Meta Business Settings → Users → System
     # users → pizzabot. App secret is from App Dashboard → Settings →
     # Basic. Phone number id is from App Dashboard → WhatsApp → API

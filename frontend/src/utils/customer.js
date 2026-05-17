@@ -1,11 +1,11 @@
 /**
  * Shared rendering helpers for customer identity in the panel.
  *
- * Meta Cloud API delivers digits-only E.164 in `wa_id` / `from`, so
- * fresh conversations always have real phones. Some legacy rows still
- * carry `<id>@lid` JIDs from the Evolution era — these helpers turn
- * either into something an operator can read at a glance: pushName
- * when known, otherwise the phone or `Anônimo · #<last-6>`.
+ * Cloud API delivers digits-only E.164 in `wa_id` / `from`, so fresh
+ * conversations always have real phones. Some legacy rows in the DB may
+ * still carry `<id>@lid` JIDs from the WhatsApp privacy protocol —
+ * these helpers turn either into something an operator can read at a
+ * glance: pushName when known, otherwise the phone or `Anônimo · #<last-6>`.
  *
  * Use them ANYWHERE the panel surfaces a customer phone or name —
  * conversation list, chat header, customers grid, live order feed,

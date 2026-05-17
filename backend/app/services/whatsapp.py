@@ -1,9 +1,8 @@
 """
 WhatsApp Cloud API client (Meta).
 
-Replaces the old Evolution-based client. The module name is unchanged
-so the rest of the backend (`from app.services.whatsapp import client`)
-keeps working — only the implementation underneath changed.
+Sole WhatsApp transport for the bot. All inbound + outbound traffic
+goes through this module via Meta's Graph API.
 
 What you need in .env (see app.config.Settings):
   META_ACCESS_TOKEN          permanent System User token
@@ -52,10 +51,10 @@ class WhatsAppCloudClient:
     MAX_RETRIES = 3
     INITIAL_BACKOFF = 0.5  # doubles each retry
 
-    # Humanisation parameters carried over from the Evolution client. The
-    # Cloud API has no presence indicator (no "typing…" dots), so the
-    # only thing we can do is throttle outbound timing — readers still
-    # get a more natural rhythm rather than instant blasts.
+    # Humanisation parameters. The Cloud API has no presence indicator
+    # (no "typing…" dots), so the only thing we can do is throttle
+    # outbound timing — readers still get a more natural rhythm rather
+    # than instant blasts.
     COMPOSE_FLOOR_MS = 1500
     COMPOSE_CEILING_MS = 6000
     COMPOSE_PER_CHAR_MS = 30
@@ -163,9 +162,9 @@ class WhatsAppCloudClient:
         """Meta wants digits-only E.164 with no leading + and no @suffix.
 
         Inbound payloads already deliver `wa_id` as digits-only; admin-typed
-        numbers from the panel may still arrive as "+5517...", "(17) 9...",
-        or with a stray "@s.whatsapp.net" suffix carried over from Evolution
-        days. Normalize defensively.
+        numbers from the panel may arrive as "+5517...", "(17) 9...", or
+        with a stray "@s.whatsapp.net" / "@lid" suffix from older stored
+        rows. Normalize defensively.
         """
         s = (phone or "").split("@")[0]
         return "".join(ch for ch in s if ch.isdigit())
@@ -175,9 +174,9 @@ class WhatsAppCloudClient:
     async def mark_as_read(self, message_id: str) -> None:
         """Send the read receipt for an inbound message id (wamid.XXX).
 
-        Best-effort. Anti-bot signal — bots that never read are easy to
-        fingerprint. Cloud API uses the same /messages endpoint with a
-        status payload (different shape from Evolution).
+        Best-effort. Anti-bot signal — bots that never read are easy for
+        WhatsApp to fingerprint. Cloud API delivers read receipts via the
+        same /messages endpoint with a `status: read` payload.
         """
         if not message_id or not self.configured:
             return
@@ -292,9 +291,7 @@ class WhatsAppCloudClient:
     ) -> dict:
         """Send a voice note. Bytes must be ogg/opus for the inline mic UI.
 
-        Signature change vs Evolution client: takes raw bytes, not base64.
-        Callers that have base64 already should decode before calling
-        (callers/conversations.py is updated accordingly).
+        Takes raw bytes; if a caller has base64, decode before calling.
         """
         await asyncio.sleep(self._audio_delay_ms() / 1000)
         media_id = await self._upload_media(
@@ -322,11 +319,10 @@ class WhatsAppCloudClient:
         """Send an image/document/video as raw bytes.
 
         Caller must pass bytes (not URL or base64) — for menu images this
-        is what `ai_engine.send_menu_image` already reads off disk. The old
-        Evolution client accepted URL-or-base64; Cloud API takes media_id
-        (after upload) or a public link. We always upload because some of
-        the menu image URLs (/media/products/<file>) aren't publicly
-        reachable from Meta's network behind the host nginx.
+        is what `ai_engine.send_menu_image` already reads off disk. Cloud
+        API accepts a media_id (after upload) or a public link; we always
+        upload because some of the menu image URLs (/media/products/<file>)
+        aren't publicly reachable from Meta's network behind the host nginx.
         """
         await asyncio.sleep(self._media_delay_ms() / 1000)
         media_id = await self._upload_media(
@@ -351,9 +347,9 @@ class WhatsAppCloudClient:
     async def download_media(self, media_id: str) -> Optional[bytes]:
         """Two-hop fetch: media_id → short-lived URL → bytes.
 
-        Inbound webhooks carry media_id (audio/image). This is symmetric
-        with Evolution's getBase64FromMediaMessage but uses Meta's URL
-        flow + bearer auth instead.
+        Inbound webhooks only carry the media_id; Meta requires a separate
+        GET /{media_id} to obtain a short-lived URL, then a second GET on
+        that URL (with the same bearer token) to fetch the bytes.
         """
         if not media_id or not self.configured:
             return None

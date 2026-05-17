@@ -31,7 +31,7 @@ backend/app/models/
   order.py                   EDIT  + channel String column
 
 backend/app/services/
-  otp.py                     NEW   Redis-backed OTP issue/verify, sends via Evolution
+  otp.py                     NEW   Redis-backed OTP issue/verify, sends via Meta WhatsApp Cloud API
   web_cart.py                NEW   structured-input → priced lines (mirrors menu_service)
   customer_tracking.py       NEW   per-order WebSocket fanout
 

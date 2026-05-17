@@ -1,11 +1,10 @@
 """
 WhatsApp Cloud API admin endpoints.
 
-Replaces the old /api/evolution endpoints. Cloud API has no QR pairing
-(the WABA-phone binding is permanent at Meta) so the surface shrinks
-to: read configuration, probe credentials, send a test message. Public
-landing-page integration just exposes the display number so the
-"Falar no WhatsApp" link works.
+Surface: read configuration, probe credentials, send a test message.
+The WABA-phone binding is permanent at Meta so there's no QR pairing
+to manage here. Public landing-page integration just exposes the
+display number so the "Falar no WhatsApp" link works.
 """
 import logging
 from typing import Optional
@@ -85,9 +84,9 @@ async def config():
 async def status():
     """Probe credentials against Graph and return display info.
 
-    Replaces Evolution's `/connectionState`. There is no equivalent of
-    "connecting / close / open" — once a WABA is provisioned the binding
-    is permanent. We just verify the token has access to the phone.
+    There's no "connecting / close / open" state to surface — once a
+    WABA is provisioned the binding is permanent. We just verify the
+    token has access to the phone number resource.
     """
     if not wa_client.configured:
         return {"ok": False, "error": "not configured"}

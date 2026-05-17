@@ -52,10 +52,6 @@ services:
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
 
-  # The Evolution container has been removed — the bot now talks directly
-  # to Meta's WhatsApp Cloud API. Saves ~500 MB RAM on the 2 GB VPS and
-  # eliminates the QR-pairing / instance-state failure modes.
-
   nginx:
     image: nginx:1.27-alpine
     restart: always

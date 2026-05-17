@@ -19,7 +19,7 @@ def test_normalize_strips_plus_and_spaces():
 
 
 def test_normalize_strips_at_suffix():
-    """Legacy Evolution-era @s.whatsapp.net / @lid suffixes should be dropped."""
+    """Legacy @s.whatsapp.net / @lid suffixes in stored DB rows should be dropped."""
     assert WhatsAppCloudClient._normalize_to("5517991289777@s.whatsapp.net") == "5517991289777"
     assert WhatsAppCloudClient._normalize_to("190374526083207@lid") == "190374526083207"
 
@@ -180,8 +180,6 @@ async def test_send_text_drops_when_unconfigured(monkeypatch):
 
 
 # ---------- _request retry logic ----------
-# (replaces the old test_evolution_client.py retry tests against the new
-# client. Same algorithm, different class.)
 
 @pytest.mark.asyncio
 async def test_request_retries_on_5xx(monkeypatch):

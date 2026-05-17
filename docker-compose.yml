@@ -62,10 +62,9 @@ services:
       - backend
     command: npm run dev -- --host 0.0.0.0
 
-  # Evolution removed — bot now uses Meta WhatsApp Cloud API directly.
-  # For local dev you can either point META_ACCESS_TOKEN at a real Meta
-  # test app, or use the bot simulator at /admin/settings/bot which
-  # bypasses outbound WhatsApp entirely.
+  # For local dev: either point META_ACCESS_TOKEN at a real Meta test
+  # app (which can message tester numbers only), or use the bot simulator
+  # at /admin/settings/bot which bypasses outbound WhatsApp entirely.
 
 volumes:
   postgres_data:

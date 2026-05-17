@@ -3,8 +3,8 @@ Admin-only utility endpoints — used by the panel for tasks that don't fit the
 domain CRUD: bot simulator, manual broadcast, future maintenance hooks.
 
 The simulator is the most important: it lets the operator run the Step-12
-end-to-end flow scenarios *without* needing a real WhatsApp number paired
-with Evolution. The simulator routes the message through the same
+end-to-end flow scenarios *without* needing to send real WhatsApp messages
+through Meta. The simulator routes the message through the same
 ai_engine.process_incoming() function the real webhook uses.
 """
 from typing import Optional

@@ -1,8 +1,8 @@
 """Webhook HMAC signature verification for Meta Cloud API.
 
-The new webhook validates against META_APP_SECRET (was EVOLUTION_WEBHOOK_SECRET
-in the previous integration). Signature format unchanged: `sha256=<hex>` in
-the X-Hub-Signature-256 header, HMAC-SHA256 of the raw request body.
+The webhook validates against META_APP_SECRET. Signature format:
+`sha256=<hex>` in the X-Hub-Signature-256 header, HMAC-SHA256 of the
+raw request body.
 """
 import hashlib
 import hmac
