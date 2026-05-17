@@ -698,9 +698,10 @@ function resolvePizzaImage(p) {
 
 function pickFeatured(products, count = 4) {
   const pizzas = products.filter((p) => p.is_pizza)
-  const withPhotos = pizzas.filter(
-    (p) => (p.image_urls || []).some((u) => u && u !== HIDDEN_IMG),
-  )
+  const hasPhoto = (p) => (p.image_urls || []).some((u) => u && u !== HIDDEN_IMG)
+  const salgadasPhoto = pizzas.filter((p) => hasPhoto(p) && p.category_name !== 'Pizzas Doces')
+  const docesPhoto = pizzas.filter((p) => hasPhoto(p) && p.category_name === 'Pizzas Doces')
+
   const picked = []
   const seen = new Set()
   const take = (p) => {
@@ -708,13 +709,17 @@ function pickFeatured(products, count = 4) {
     seen.add(p.id)
     picked.push(p)
   }
-  withPhotos.forEach(take)
-  // If we still need slots, pad with one doce (variety) then the rest salgadas.
-  const doce = pizzas.find((p) => p.category_name === 'Pizzas Doces')
-  if (picked.length < count) take(doce)
-  pizzas.forEach((p) => {
-    if (picked.length < count) take(p)
-  })
+
+  // Force one doce when available — variety beats showing 4 near-identical
+  // salgadas like "Mexicana / Mexicana Super / Paulista / Toscana" all at
+  // the same price. The doce slot anchors the visual mix.
+  salgadasPhoto.slice(0, count - 1).forEach(take)
+  if (docesPhoto.length) take(docesPhoto[0])
+
+  // Pad with any remaining photo'd salgadas, then non-photo'd pizzas as
+  // last resort so we always render `count` cards.
+  salgadasPhoto.forEach((p) => { if (picked.length < count) take(p) })
+  pizzas.forEach((p) => { if (picked.length < count) take(p) })
   return picked.slice(0, count)
 }
 
