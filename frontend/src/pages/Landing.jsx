@@ -1348,7 +1348,10 @@ function Footer() {
       <div className="landing-rule mt-12" />
       <div className="max-w-7xl mx-auto px-5 md:px-8 mt-6 flex flex-col sm:flex-row justify-between gap-3 text-xs" style={{ color: 'var(--charcoal-soft)' }}>
         <div>© {year} {BRAND.name}. Feito com forno e paciência.</div>
-        <div className="flex gap-5">
+        <div className="flex flex-wrap gap-5">
+          <Link to="/privacidade" className="hover:underline">Privacidade</Link>
+          <Link to="/termos" className="hover:underline">Termos</Link>
+          <Link to="/exclusao-dados" className="hover:underline">Excluir dados</Link>
           <Link to="/login" className="hover:underline">Entrar</Link>
         </div>
       </div>

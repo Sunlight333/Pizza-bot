@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 
 import CustomerTopBar from './CustomerTopBar'
 import CustomerStickyCartBar from './CustomerStickyCartBar'
+import CustomerFooter from './CustomerFooter'
 import { useCustomerCart } from '@/stores/customerCart'
 import { useCustomerAuth } from '@/stores/customerAuth'
 
@@ -42,12 +43,17 @@ export default function CustomerLayout() {
   )
   const padBottom = itemCount > 0 && !noCartBar ? 'pb-20' : ''
 
+  // Footer is hidden when the sticky cart bar would overlap or when the
+  // page already has its own fixed-bottom CTA. Avoids visual collision.
+  const hideFooter = itemCount > 0 && !noCartBar
+
   return (
     <div className={`customer-portal min-h-screen flex flex-col ${padBottom}`}>
       <CustomerTopBar />
       <main className="flex-1">
         <Outlet />
       </main>
+      <CustomerFooter hidden={hideFooter} />
       {itemCount > 0 && !noCartBar && <CustomerStickyCartBar />}
     </div>
   )

@@ -60,6 +60,11 @@ import CustomerTrack from '@/pages/customer/CustomerTrack'
 import CustomerProfile from '@/pages/customer/CustomerProfile'
 import CustomerAddresses from '@/pages/customer/CustomerAddresses'
 
+// Legal pages — public, required for Meta App Review
+import Privacidade from '@/pages/legal/Privacidade'
+import Termos from '@/pages/legal/Termos'
+import ExclusaoDados from '@/pages/legal/ExclusaoDados'
+
 export default function App() {
   return (
     <Routes>
@@ -78,6 +83,14 @@ export default function App() {
       <Route element={<CustomerLayout />}>
         <Route path="/register" element={<CustomerRegister />} />
         <Route path="/login/verify" element={<CustomerOTPVerify />} />
+
+        {/* Public legal pages — URLs registered with Meta's App Review.
+            Inside CustomerLayout for design consistency, outside the
+            protected route so anyone (including Meta's crawler) can read
+            them without auth. */}
+        <Route path="/privacidade" element={<Privacidade />} />
+        <Route path="/termos" element={<Termos />} />
+        <Route path="/exclusao-dados" element={<ExclusaoDados />} />
 
         <Route element={<CustomerProtectedRoute />}>
           <Route path="/cardapio" element={<CustomerMenu />} />
