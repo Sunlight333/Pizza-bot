@@ -310,7 +310,7 @@ function Nav() {
           <img
             src="/images/landing/logo.png"
             alt={BRAND.name}
-            className="w-10 h-10 rounded-xl object-cover"
+            className="w-11 h-11 rounded-full object-contain"
             style={{
               boxShadow:
                 '0 1px 0 rgba(255,255,255,0.4) inset, 0 8px 18px -8px rgba(139,26,26,0.45)',
@@ -1370,7 +1370,7 @@ function Footer() {
             <img
               src="/images/landing/logo.png"
               alt={BRAND.name}
-              className="w-10 h-10 rounded-xl object-cover"
+              className="w-11 h-11 rounded-full object-contain"
               style={{
                 boxShadow:
                   '0 1px 0 rgba(255,255,255,0.4) inset, 0 8px 18px -8px rgba(139,26,26,0.45)',

@@ -38,18 +38,23 @@ export default function Sidebar() {
       className="glass-card m-3 mr-0 flex flex-col overflow-hidden"
     >
       <div className="flex items-center gap-3 px-4 py-5">
+        {/* The brand mark is a round badge with its own background — render
+            full-circle, object-contain (no crop), no ring/shadow which
+            otherwise fight the badge's own border. Larger (44px) so the
+            mark is readable rather than the tiny clipped thumb the old
+            w-9 + rounded-xl produced. */}
         <img
           src={ASSETS.brand.logo}
-          alt="Pizzabot"
-          className="w-9 h-9 rounded-xl shrink-0 object-cover ring-1 ring-glass-border shadow-glow-primary"
+          alt="Pizzaria Planalto"
+          className="w-11 h-11 rounded-full shrink-0 object-contain"
         />
         {!collapsed && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="font-display text-lg leading-none"
+            className="font-display text-lg leading-none truncate"
           >
-            Pizzabot
+            Pizzaria Planalto
           </motion.div>
         )}
       </div>
