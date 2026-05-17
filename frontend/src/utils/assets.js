@@ -8,8 +8,12 @@
  */
 export const ASSETS = {
   brand: {
-    logo: '/images/brand/logo.png',
-    og: '/images/brand/og-image.png',
+    // Single canonical brand mark — same file used by the public landing,
+    // the unified login, the customer top bar, and the admin sidebar so
+    // the logo stays consistent everywhere. Update this one path to
+    // swap the brand mark across the whole project.
+    logo: '/images/landing/logo.png',
+    og: '/images/landing/social/og-image.png',
   },
   backgrounds: {
     login: '/images/backgrounds/login-bg.png',
