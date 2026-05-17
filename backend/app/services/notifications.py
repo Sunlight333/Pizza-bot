@@ -14,7 +14,36 @@ log = logging.getLogger(__name__)
 
 
 def _admin_phones() -> list[str]:
-    return [p.strip() for p in (settings.admin_phones or "").split(",") if p.strip()]
+    """Normalized admin phone list — digits only, no +/spaces, deduplicated.
+
+    The env var lets operators paste numbers in any reasonable shape
+    (`+55 17 9...`, `5517...`, `(17) 99128-9777`); we normalize to the same
+    digits-only E.164 the rest of the project uses so equality checks against
+    inbound `phone` values (which are also digits-only from Meta's `wa_id`)
+    actually match.
+    """
+    raw = (settings.admin_phones or "").split(",")
+    out: list[str] = []
+    seen: set[str] = set()
+    for p in raw:
+        digits = "".join(ch for ch in p if ch.isdigit())
+        if digits and digits not in seen:
+            seen.add(digits)
+            out.append(digits)
+    return out
+
+
+def is_admin_phone(phone: str | None) -> bool:
+    """True when `phone` belongs to an operator (matches ADMIN_PHONES).
+
+    Used by the webhook + ai_engine to skip bot-side ordering logic for
+    inbound from the pizzaria's own number(s) — see notes in
+    ai_engine.process_incoming.
+    """
+    if not phone:
+        return False
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    return digits in _admin_phones() if digits else False
 
 
 async def _should_send(kind: str, cooldown_seconds: int = 300) -> bool:
@@ -32,15 +61,46 @@ async def _should_send(kind: str, cooldown_seconds: int = 300) -> bool:
 
 
 async def alert(kind: str, message: str, cooldown_seconds: int = 300) -> None:
+    """Dispatch an alert to every ADMIN_PHONES recipient.
+
+    Tries template first (when META_TEMPLATE_ADMIN_ALERT is set), falls
+    back to freeform text otherwise. Why both:
+      - Templates work outside the 24-hour customer-service window — the
+        normal case for admin alerts (bridge offline at 3am, daily summary,
+        etc.) where the admin hasn't messaged the bot recently.
+      - Freeform text is the dev/staging fallback before the template is
+        approved by Meta. Inside the 24h window it still delivers; outside,
+        Meta returns 131047 and the admin won't see the alert.
+
+    Each call is rate-limited per `kind` to prevent storms.
+    """
     if not await _should_send(kind, cooldown_seconds):
         return
     phones = _admin_phones()
     if not phones:
         log.info("alert fired but ADMIN_PHONES empty: [%s] %s", kind, message)
         return
+    template_name = settings.meta_template_admin_alert
     for phone in phones:
         try:
-            await wa_client.send_text(phone, f"🔔 {kind}\n{message}")
+            if template_name:
+                res = await wa_client.send_template(
+                    phone,
+                    name=template_name,
+                    language="pt_BR",
+                    body_params=[kind, message],
+                )
+                # If Meta rejected the template (typo, not approved, etc.)
+                # fall through to freeform — better the admin sees SOMETHING
+                # than silently nothing.
+                if isinstance(res, dict) and res.get("error"):
+                    log.warning(
+                        "admin template %s failed for %s: %s — falling back to text",
+                        template_name, phone, res.get("error"),
+                    )
+                    await wa_client.send_text(phone, f"🔔 {kind}\n{message}")
+            else:
+                await wa_client.send_text(phone, f"🔔 {kind}\n{message}")
         except Exception:
             log.exception("failed to send alert to %s", phone)
 

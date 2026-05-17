@@ -24,6 +24,7 @@ from app.services import customer_service
 from app.services import delivery as delivery_svc
 from app.services import handoff as handoff_svc
 from app.services import order_builder
+from app.services.notifications import is_admin_phone as _is_admin_phone
 from app.services.menu_service import get_menu_for_bot, get_pizza_size_names
 
 log = logging.getLogger(__name__)
@@ -1261,6 +1262,24 @@ async def process_incoming(
     only sees the transcribed/synthesised `text`.
     """
     state = await state_svc.get_state(phone)
+
+    # Admin phone guard — when the pizzaria owner / operator (whose number
+    # is in ADMIN_PHONES) WhatsApps the bot, never treat them as a customer.
+    # Otherwise the bot would greet them with the ordering flow and try to
+    # build a cart for them, which is confusing at best and creates fake
+    # orders at worst (the owner's number IS sometimes used for testing).
+    # We still persist the message so the chat viewer shows it; the bot just
+    # doesn't reply. The admin can then read the chat in /admin/conversations,
+    # use the bot simulator at /admin/settings/bot for test ordering, or
+    # reply manually from the panel.
+    if _is_admin_phone(phone):
+        log.info("admin phone %s sent inbound — skipping bot processing", phone)
+        await _persist_message(
+            db, phone=phone, customer_id=state.get("customer_id"),
+            role=MessageRole.user, content=text, is_audio=is_audio,
+            media_url=media_url, media_type=media_type,
+        )
+        return None
 
     if state.get("state") == "human_takeover":
         # Still record inbound so admin can see it

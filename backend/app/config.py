@@ -38,6 +38,17 @@ class Settings(BaseSettings):
     meta_verify_token: str = Field(default="")
     meta_graph_version: str = Field(default="v22.0")
 
+    # Message-template names — submit these at WhatsApp Manager → Message
+    # Templates, wait for Meta approval (1-24h), then paste the approved
+    # name here. When set, the corresponding flow switches from freeform
+    # send_text (which fails outside the 24h customer-service window) to
+    # send_template (which works any time). See docs/whatsapp_templates.md
+    # for the exact body text + category to submit for each.
+    meta_template_otp: str = Field(default="")              # AUTH; body has {{1}}=6-digit code
+    meta_template_admin_alert: str = Field(default="")       # UTILITY; {{1}}=kind, {{2}}=message
+    meta_template_handoff_customer: str = Field(default="")  # UTILITY; no params — "atendente vai responder"
+    meta_template_order_status: str = Field(default="")      # UTILITY; {{1}}=order #, {{2}}=status text
+
     bridge_token: str = Field(default="")
     admin_phones: str = Field(default="")  # comma-separated
 

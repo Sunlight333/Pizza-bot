@@ -91,12 +91,38 @@ async def generate_and_send(phone: str) -> dict:
     payload = json.dumps({"code": code, "attempts": 0})
     await _client().set(_key(phone), payload, ex=OTP_TTL_SECONDS)
 
-    text = (
+    # OTP delivery has a serious 24h-window problem: customers logging
+    # into the portal often have NEVER messaged the bot, so freeform
+    # WhatsApp send returns 131047 and the code never arrives.
+    # The fix is an AUTHENTICATION-category Meta template (which works
+    # any time, no window restriction, AND renders WhatsApp's native
+    # "Copy code" button). Use it when configured; fall back to text
+    # (works during dev/staging when admin sends the first message
+    # to themselves).
+    template_name = settings.meta_template_otp
+    text_fallback = (
         f"Seu código de acesso é *{code}*.\n"
         f"Válido por 10 minutos. Se você não solicitou, ignore esta mensagem."
     )
     try:
-        await wa_client.send_text(phone, text)
+        if template_name:
+            res = await wa_client.send_template(
+                phone,
+                name=template_name,
+                language="pt_BR",
+                body_params=[code],
+                button_params=[code],  # populates the one-time-password button
+            )
+            if isinstance(res, dict) and res.get("error"):
+                # Template configured but Meta rejected (typo, not approved
+                # yet, etc). Try freeform — better than failing silently.
+                log.warning(
+                    "otp template %s failed for %s: %s — falling back to text",
+                    template_name, phone, res.get("error"),
+                )
+                await wa_client.send_text(phone, text_fallback)
+        else:
+            await wa_client.send_text(phone, text_fallback)
     except Exception as e:
         # If the send failed, drop the stored code so the customer can try
         # again immediately rather than waiting for TTL expiry.
@@ -104,7 +130,7 @@ async def generate_and_send(phone: str) -> dict:
         log.exception("otp.generate_and_send: WhatsApp send failed for %s", phone)
         raise RuntimeError("Falha ao enviar o código pelo WhatsApp") from e
 
-    log.info("otp issued for %s", phone)
+    log.info("otp issued for %s (template=%s)", phone, bool(template_name))
     return {"sent": True}
 
 

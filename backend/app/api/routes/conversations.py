@@ -136,7 +136,15 @@ async def list_messages(
 
 @router.post("/{phone}/takeover")
 async def takeover(phone: str):
-    await handoff_svc.trigger_handoff(phone, reason="admin_takeover")
+    # Admin clicked "take over" in the panel — they're about to type
+    # themselves, so skip the auto "atendente vai responder" message and
+    # the WhatsApp ping to ADMIN_PHONES (they ARE the admin).
+    await handoff_svc.trigger_handoff(
+        phone,
+        reason="admin_takeover",
+        notify_customer=False,
+        notify_admins=False,
+    )
     return {"ok": True}
 
 

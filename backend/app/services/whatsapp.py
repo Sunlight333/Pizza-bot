@@ -95,28 +95,40 @@ class WhatsAppCloudClient:
             try:
                 async with httpx.AsyncClient(timeout=30.0) as c:
                     r = await c.request(method, url, headers=headers, **kwargs)
-                if r.status_code >= 500:
-                    raise httpx.HTTPStatusError(
-                        f"server error {r.status_code}", request=r.request, response=r
-                    )
-                if r.status_code >= 400:
+                # 4xx errors are deterministic ("bad token", "phone not in
+                # allowed list", "template not approved"), so retrying just
+                # wastes time + clutters logs. Raise immediately without
+                # entering the retry loop — caller decides how to handle.
+                if 400 <= r.status_code < 500:
                     log.warning(
                         "Meta WhatsApp %s %s -> %s %s",
                         method, url, r.status_code, r.text[:400],
                     )
                     r.raise_for_status()
-                return r
-            except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as e:
-                last_exc = e
-                if attempt + 1 < self.MAX_RETRIES:
-                    backoff = self.INITIAL_BACKOFF * (2**attempt)
-                    log.warning(
-                        "Meta WhatsApp %s %s attempt %d/%d failed: %s — retrying in %.1fs",
-                        method, url, attempt + 1, self.MAX_RETRIES, e, backoff,
+                # 5xx is transient (Meta capacity / network blip), worth
+                # retrying with backoff.
+                if r.status_code >= 500:
+                    raise httpx.HTTPStatusError(
+                        f"server error {r.status_code}", request=r.request, response=r
                     )
-                    await asyncio.sleep(backoff)
-                    continue
-                raise
+                return r
+            except httpx.HTTPStatusError as e:
+                # 4xx — don't retry, re-raise immediately.
+                if e.response is not None and 400 <= e.response.status_code < 500:
+                    raise
+                last_exc = e
+            except (httpx.TimeoutException, httpx.NetworkError) as e:
+                last_exc = e
+            # Got here from a 5xx or network failure — retry with backoff.
+            if attempt + 1 < self.MAX_RETRIES:
+                backoff = self.INITIAL_BACKOFF * (2**attempt)
+                log.warning(
+                    "Meta WhatsApp %s %s attempt %d/%d failed: %s — retrying in %.1fs",
+                    method, url, attempt + 1, self.MAX_RETRIES, last_exc, backoff,
+                )
+                await asyncio.sleep(backoff)
+                continue
+            raise last_exc
         raise last_exc  # pragma: no cover
 
     async def _post_message(self, payload: dict) -> dict:
@@ -186,6 +198,67 @@ class WhatsAppCloudClient:
             "type": "text",
             "text": {"preview_url": True, "body": text},
         })
+
+    async def send_template(
+        self,
+        phone: str,
+        *,
+        name: str,
+        language: str = "pt_BR",
+        body_params: Optional[list[str]] = None,
+        button_params: Optional[list[str]] = None,
+    ) -> dict:
+        """Send a Meta-approved message template.
+
+        Required for any send that's outside the 24-hour customer service
+        window — admin alerts, OTP delivery to a customer who never messaged
+        the bot, marketing pings, post-delivery follow-ups, etc.
+
+        Args:
+          name: template name registered at Meta (must match exactly, case
+                sensitive). Templates are submitted via WhatsApp Manager →
+                Message Templates and need 1-24h approval per template.
+          language: BCP-47 lang code. We default pt_BR because every
+                template in this project targets Brazil.
+          body_params: positional substitutions for {{1}}, {{2}}, ... in
+                the template body. Pass [] (or omit) if the template has
+                no placeholders.
+          button_params: positional substitutions for button URLs/copy-code
+                values. For an AUTHENTICATION template with a one-time-
+                password button, this carries the actual code.
+
+        Returns the Graph response dict (`{messages: [{id: wamid...}]}`
+        on success, `{error: ...}` on failure). Caller decides whether to
+        retry / fall back to text / surface the error.
+        """
+        components: list[dict[str, Any]] = []
+        if body_params:
+            components.append({
+                "type": "body",
+                "parameters": [{"type": "text", "text": str(p)} for p in body_params],
+            })
+        if button_params:
+            # Index 0 here means "first button" — matches Meta's spec for
+            # AUTHENTICATION templates where the OTP button is index 0.
+            components.append({
+                "type": "button",
+                "sub_type": "url",
+                "index": "0",
+                "parameters": [
+                    {"type": "text", "text": str(p)} for p in button_params
+                ],
+            })
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": self._normalize_to(phone),
+            "type": "template",
+            "template": {
+                "name": name,
+                "language": {"code": language},
+                **({"components": components} if components else {}),
+            },
+        }
+        return await self._post_message(payload)
 
     async def _upload_media(
         self, data: bytes, *, mime_type: str, filename: str

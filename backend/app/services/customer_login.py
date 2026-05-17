@@ -68,11 +68,35 @@ def _key(token: str) -> str:
 
 
 async def _send_otp(phone: str, code: str) -> None:
-    text = (
+    """Deliver the 6-digit code via WhatsApp.
+
+    Tries the AUTHENTICATION template first (works outside the 24h
+    customer-service window AND renders WhatsApp's native "Copy code"
+    button). Falls back to freeform text if the template isn't configured
+    yet (dev/staging before Meta approval). See docs/whatsapp_templates.md.
+    """
+    from app.config import settings as _settings  # avoid module-import cycle
+    template_name = _settings.meta_template_otp
+    text_fallback = (
         f"Seu código de acesso é *{code}*.\n"
         f"Válido por 10 minutos. Se você não solicitou, ignore esta mensagem."
     )
-    await wa_client.send_text(phone, text)
+    if template_name:
+        res = await wa_client.send_template(
+            phone,
+            name=template_name,
+            language="pt_BR",
+            body_params=[code],
+            button_params=[code],
+        )
+        if isinstance(res, dict) and res.get("error"):
+            log.warning(
+                "customer_login OTP template %s failed for %s: %s — falling back to text",
+                template_name, phone, res.get("error"),
+            )
+            await wa_client.send_text(phone, text_fallback)
+        return
+    await wa_client.send_text(phone, text_fallback)
 
 
 # ---------- LOGIN intent ----------
