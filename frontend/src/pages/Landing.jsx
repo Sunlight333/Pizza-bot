@@ -32,7 +32,8 @@ import {
   X,
 } from 'lucide-react'
 
-import { getApiBase } from '@/utils/apiUrl'
+import { getApiBase, resolveMediaUrl } from '@/utils/apiUrl'
+import { pizzaImage } from '@/utils/assets'
 import '@/styles/landing.css'
 
 // -- Brand constants --------------------------------------------------------
@@ -662,39 +663,96 @@ function Story() {
 }
 
 // =========================================================================
-// Featured menu
+// Featured menu — pulled live from the admin's product catalog so prices
+// shown on the landing always match what the bot quotes. Selection rule:
+//   1. Prefer pizzas with operator-uploaded photos (shows real food, not
+//      stock fallbacks) — these signal the operator wants them promoted.
+//   2. Pad with first-active salgada + first-active doce to keep 4 cards.
+// Price displayed is the LARGEST size (typically "grande") because that's
+// what's printed on flyers / what customers expect to see as the headline.
 // =========================================================================
+
+// Strip the admin's "01 ", "02 ", ... numbering prefix used for menu
+// ordering. The numbers are useful in the admin grid but ugly on the
+// public card.
+function cleanName(name) {
+  return String(name || '').replace(/^\d+\s+/, '').trim()
+}
+
+// Pick the "headline" price for a pizza: the most expensive non-zero
+// size (i.e. "grande" rather than "brotinho"). Returns 0 if none.
+function headlinePrice(p) {
+  return (p.sizes || []).reduce(
+    (max, s) => (s.price && s.price > max ? s.price : max), 0,
+  )
+}
+
+// Image resolution mirrors customer/ProductCard.jsx so a photoless pizza
+// looks identical on landing, customer portal, and admin Menu page.
+const HIDDEN_IMG = '__hidden__'
+function resolvePizzaImage(p) {
+  const real = (p.image_urls || []).filter((u) => u && u !== HIDDEN_IMG)
+  if (real.length) return resolveMediaUrl(real[0])
+  return pizzaImage(p.name, p.category_name || '')
+}
+
+function pickFeatured(products, count = 4) {
+  const pizzas = products.filter((p) => p.is_pizza)
+  const withPhotos = pizzas.filter(
+    (p) => (p.image_urls || []).some((u) => u && u !== HIDDEN_IMG),
+  )
+  const picked = []
+  const seen = new Set()
+  const take = (p) => {
+    if (!p || seen.has(p.id)) return
+    seen.add(p.id)
+    picked.push(p)
+  }
+  withPhotos.forEach(take)
+  // If we still need slots, pad with one doce (variety) then the rest salgadas.
+  const doce = pizzas.find((p) => p.category_name === 'Pizzas Doces')
+  if (picked.length < count) take(doce)
+  pizzas.forEach((p) => {
+    if (picked.length < count) take(p)
+  })
+  return picked.slice(0, count)
+}
+
+// Map a category to a short tag chip shown over the photo. Falls back to
+// "Nossa casa" so we never render an empty pill.
+function tagFor(p, index) {
+  if (p.category_name === 'Pizzas Doces') return 'Doce'
+  if (index === 0) return 'Em destaque'
+  if (index === 1) return 'Mais pedida'
+  return 'Nossa casa'
+}
+
 function FeaturedMenu() {
-  const items = [
-    {
-      name: 'Margherita',
-      image: '/menu/savory/pizza-margherita-classica.jpeg',
-      ingredients: 'Mussarela de búfala, tomate pelado, manjericão fresco',
-      price: 'R$ 49',
-      tag: 'A clássica',
+  const { data: products } = useQuery({
+    queryKey: ['landing-public-menu'],
+    queryFn: async () => {
+      const r = await fetch(`${getApiBase()}/api/menu/public/products`, {
+        signal: AbortSignal.timeout?.(8000),
+      })
+      if (!r.ok) throw new Error(`status ${r.status}`)
+      return r.json()
     },
-    {
-      name: 'Calabresa',
-      image: '/menu/savory/pizza-calabresa-cebola-rodelas.jpeg',
-      ingredients: 'Calabresa artesanal, cebola roxa, mussarela, azeitona',
-      price: 'R$ 52',
-      tag: 'Mais pedida',
-    },
-    {
-      name: 'Quatro Queijos',
-      image: '/menu/savory/pizza-quatro-queijos-cheddar.jpeg',
-      ingredients: 'Mussarela, gorgonzola, parmesão, catupiry',
-      price: 'R$ 58',
-      tag: 'Cremosa',
-    },
-    {
-      name: 'Romeu & Julieta',
-      image: '/menu/sweet/pizza-doce-romeu-julieta.jpeg',
-      ingredients: 'Mussarela, goiabada cremosa, raspas de canela',
-      price: 'R$ 46',
-      tag: 'Doce',
-    },
-  ]
+    staleTime: 5 * 60_000,
+    retry: 1,
+  })
+
+  const items = useMemo(
+    () =>
+      pickFeatured(products || []).map((p, i) => ({
+        id: p.id,
+        name: cleanName(p.name),
+        image: resolvePizzaImage(p),
+        ingredients: p.description || 'Receita da casa, assada no forno a lenha.',
+        price: headlinePrice(p),
+        tag: tagFor(p, i),
+      })),
+    [products],
+  )
 
   return (
     <section id="cardapio" className="py-24 md:py-32 relative">
@@ -715,44 +773,71 @@ function FeaturedMenu() {
           </WhatsAppLink>
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {items.map((p, i) => (
-            <motion.article
-              key={p.name}
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-60px' }}
-              transition={{ duration: 0.6, delay: i * 0.07, ease: [0.22, 1, 0.36, 1] }}
-              className="landing-card-3d p-3 group"
-            >
+        {items.length === 0 ? (
+          // Skeleton placeholder while the public menu is loading. Keeps
+          // layout height stable so the section below doesn't jump.
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[0, 1, 2, 3].map((i) => (
               <div
-                className="aspect-square rounded-2xl bg-center bg-cover relative overflow-hidden"
-                style={{ backgroundImage: `url(${p.image})` }}
+                key={i}
+                className="landing-card-3d p-3"
+                style={{ minHeight: 380 }}
               >
-                <span
-                  className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[11px] font-semibold"
-                  style={{
-                    background: 'rgba(255,252,247,0.92)',
-                    color: 'var(--ovenred)',
-                    backdropFilter: 'blur(8px)',
-                    WebkitBackdropFilter: 'blur(8px)',
-                  }}
-                >
-                  {p.tag}
-                </span>
-              </div>
-              <div className="p-4 pt-5">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="font-display text-xl">{p.name}</h3>
-                  <span className="font-display text-lg" style={{ color: 'var(--ovenred)' }}>{p.price}</span>
+                <div
+                  className="aspect-square rounded-2xl"
+                  style={{ background: 'rgba(31,24,21,0.06)' }}
+                />
+                <div className="p-4 pt-5 space-y-2">
+                  <div className="h-5 w-2/3 rounded" style={{ background: 'rgba(31,24,21,0.06)' }} />
+                  <div className="h-3 w-full rounded" style={{ background: 'rgba(31,24,21,0.04)' }} />
                 </div>
-                <p className="mt-1.5 text-sm leading-relaxed" style={{ color: 'var(--charcoal-soft)' }}>
-                  {p.ingredients}
-                </p>
               </div>
-            </motion.article>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {items.map((p, i) => (
+              <motion.article
+                key={p.id}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-60px' }}
+                transition={{ duration: 0.6, delay: i * 0.07, ease: [0.22, 1, 0.36, 1] }}
+                className="landing-card-3d p-3 group"
+              >
+                <div
+                  className="aspect-square rounded-2xl bg-center bg-cover relative overflow-hidden"
+                  style={{ backgroundImage: `url(${p.image})` }}
+                >
+                  <span
+                    className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                    style={{
+                      background: 'rgba(255,252,247,0.92)',
+                      color: 'var(--ovenred)',
+                      backdropFilter: 'blur(8px)',
+                      WebkitBackdropFilter: 'blur(8px)',
+                    }}
+                  >
+                    {p.tag}
+                  </span>
+                </div>
+                <div className="p-4 pt-5">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className="font-display text-xl">{p.name}</h3>
+                    {p.price > 0 && (
+                      <span className="font-display text-lg" style={{ color: 'var(--ovenred)' }}>
+                        R$ {p.price.toFixed(2).replace('.', ',')}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1.5 text-sm leading-relaxed" style={{ color: 'var(--charcoal-soft)' }}>
+                    {p.ingredients}
+                  </p>
+                </div>
+              </motion.article>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   )
