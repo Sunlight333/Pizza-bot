@@ -54,14 +54,17 @@ class WhatsAppCloudClient:
     # Humanisation parameters. The Cloud API has no presence indicator
     # (no "typing…" dots), so the only thing we can do is throttle
     # outbound timing — readers still get a more natural rhythm rather
-    # than instant blasts.
-    COMPOSE_FLOOR_MS = 1500
-    COMPOSE_CEILING_MS = 6000
-    COMPOSE_PER_CHAR_MS = 30
-    MEDIA_DELAY_MIN_MS = 2200
-    MEDIA_DELAY_MAX_MS = 3800
-    AUDIO_DELAY_MIN_MS = 1800
-    AUDIO_DELAY_MAX_MS = 3000
+    # than instant blasts. Tightened 2026-05-20 after a real exchange
+    # showed 5s of pure throttle on top of an already-slow LLM round
+    # trip. Cloud API bots are officially registered so we no longer
+    # need the anti-fingerprint padding the Evolution-era values had.
+    COMPOSE_FLOOR_MS = 400
+    COMPOSE_CEILING_MS = 1500
+    COMPOSE_PER_CHAR_MS = 12
+    MEDIA_DELAY_MIN_MS = 800
+    MEDIA_DELAY_MAX_MS = 1500
+    AUDIO_DELAY_MIN_MS = 700
+    AUDIO_DELAY_MAX_MS = 1300
 
     def __init__(self) -> None:
         self._token = settings.meta_access_token

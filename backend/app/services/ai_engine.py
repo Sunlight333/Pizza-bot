@@ -7,10 +7,12 @@ a plain-text reply to send back.
 """
 import json
 import logging
+import time
 from datetime import timezone
 from pathlib import Path
 from typing import Any, Optional
 
+import redis.asyncio as _redis
 from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,12 +33,63 @@ log = logging.getLogger(__name__)
 
 _client: Optional[AsyncOpenAI] = None
 
+# Chat model used for both the tool-decision turn and the synthesis turn.
+# gpt-4o-mini is 3-5x faster and ~15x cheaper than gpt-4o; the bot's
+# tasks (greeting, menu Q&A, order assembly via tools) sit comfortably
+# inside mini's capability envelope. Switched 2026-05-20 after a real
+# exchange showed a 70-second reply latency dominated by the gpt-4o
+# round trip. Bump back to "gpt-4o" if reply quality regresses.
+CHAT_MODEL = "gpt-4o-mini"
+
 
 def _openai() -> AsyncOpenAI:
     global _client
     if _client is None:
         _client = AsyncOpenAI(api_key=settings.openai_api_key)
     return _client
+
+
+# Redis cache for the static parts of the system prompt — menu, delivery
+# zones, pizza size names. All three are pure DB-derived strings that
+# change at most a few times per day; rebuilding them on every customer
+# message wastes ~1-2s of DB time and bloats the LLM prompt with
+# variation that does not exist. 60s TTL is short enough that menu edits
+# in the admin panel propagate quickly without explicit invalidation.
+_redis_client: Optional[_redis.Redis] = None
+_MENU_BUNDLE_KEY = "ai_engine:menu_bundle:v1"
+_MENU_BUNDLE_TTL_SECONDS = 60
+
+
+def _get_redis() -> _redis.Redis:
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = _redis.from_url(settings.redis_url, decode_responses=True)
+    return _redis_client
+
+
+async def _get_menu_bundle_cached(db: AsyncSession) -> tuple[str, str, str]:
+    """Return (menu_text, zones_text, sizes_label), cached in Redis."""
+    rc = _get_redis()
+    raw = await rc.get(_MENU_BUNDLE_KEY)
+    if raw:
+        try:
+            data = json.loads(raw)
+            return data["menu"], data["zones"], data["sizes_label"]
+        except Exception:
+            pass
+    menu_text = await get_menu_for_bot(db)
+    zones_text = await delivery_svc.get_all_zones_formatted(db)
+    size_names = await get_pizza_size_names(db)
+    sizes_label = " / ".join(size_names) if size_names else "tamanho"
+    try:
+        await rc.set(
+            _MENU_BUNDLE_KEY,
+            json.dumps({"menu": menu_text, "zones": zones_text, "sizes_label": sizes_label}),
+            ex=_MENU_BUNDLE_TTL_SECONDS,
+        )
+    except Exception:
+        log.exception("menu bundle cache write failed (non-fatal)")
+    return menu_text, zones_text, sizes_label
 
 
 # ---- Tool schema for GPT function calling ----
@@ -479,10 +532,7 @@ def _is_rural_address(addr_text: str) -> bool:
 
 async def _build_system_prompt(db: AsyncSession, state: dict) -> str:
     cfg = await _get_bot_config(db)
-    menu_text = await get_menu_for_bot(db)
-    zones_text = await delivery_svc.get_all_zones_formatted(db)
-    size_names = await get_pizza_size_names(db)
-    sizes_label = " / ".join(size_names) if size_names else "tamanho"
+    menu_text, zones_text, sizes_label = await _get_menu_bundle_cached(db)
 
     # Cart snapshot — itemised lines + the deterministic subtotal / fee /
     # total. GPT must mirror these numbers; recomputing is forbidden in
@@ -1421,7 +1471,13 @@ async def process_incoming(
         )
 
     context = state.get("context_messages", [])
+
+    # Phase-level timing for latency forensics. Each tN is monotonic
+    # perf_counter time relative to t_start; we log a single structured
+    # line at the end so a slow reply can be triaged in one grep.
+    t_start = time.perf_counter()
     system_prompt = await _build_system_prompt(db, state)
+    t_prompt = time.perf_counter()
 
     audio_hint = " (cliente enviou áudio)" if is_audio else ""
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
@@ -1468,7 +1524,7 @@ async def process_incoming(
 
     try:
         response = await _openai().chat.completions.create(
-            model="gpt-4o",
+            model=CHAT_MODEL,
             messages=messages,
             tools=TOOLS,
             temperature=0.5,
@@ -1477,6 +1533,7 @@ async def process_incoming(
     except Exception:
         log.exception("OpenAI call failed")
         return "Ih, tive um probleminha aqui. Pode repetir?"
+    t_llm1 = time.perf_counter()
 
     if response.usage:
         await _add_token_usage(response.usage.total_tokens or 0)
@@ -1497,6 +1554,7 @@ async def process_incoming(
                 "content": result,
             }
         )
+    t_tools = time.perf_counter()
 
     # If there were tool calls, ask GPT for the user-facing reply using the tool results
     if tool_msgs:
@@ -1520,7 +1578,7 @@ async def process_incoming(
         ]
         try:
             response2 = await _openai().chat.completions.create(
-                model="gpt-4o",
+                model=CHAT_MODEL,
                 messages=followup,
                 temperature=0.5,
                 max_tokens=700,
@@ -1533,6 +1591,18 @@ async def process_incoming(
             reply = "Ok! " + (msg.content or "")
     else:
         reply = msg.content or ""
+    t_llm2 = time.perf_counter()
+
+    log.info(
+        "process_incoming timing phone=%s prompt=%.2fs llm1=%.2fs tools=%.2fs llm2=%.2fs total=%.2fs n_tools=%d",
+        phone,
+        t_prompt - t_start,
+        t_llm1 - t_prompt,
+        t_tools - t_llm1,
+        t_llm2 - t_tools,
+        t_llm2 - t_start,
+        len(tool_msgs),
+    )
 
     # Persist context + state
     context.append({"role": "user", "content": text})
