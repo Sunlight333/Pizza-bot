@@ -52,6 +52,15 @@ class Settings(BaseSettings):
     bridge_token: str = Field(default="")
     admin_phones: str = Field(default="")  # comma-separated
 
+    # Temporary redirect mode. While true, every inbound customer message
+    # is auto-replied with a fixed "talk to us at the other number" text
+    # and the LLM pipeline is skipped. Customers who prefix their message
+    # with the word "bot" (case-insensitive) bypass the redirect and get
+    # full bot processing — the operator's testing escape hatch. Toggle
+    # off by setting BOT_REDIRECT_ENABLED=false (or removing the line)
+    # and restarting the backend container.
+    bot_redirect_enabled: bool = Field(default=False)
+
     cors_origins: str = Field(default="http://localhost:5173")
 
     @property

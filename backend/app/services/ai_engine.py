@@ -69,6 +69,23 @@ def _get_redis() -> _redis.Redis:
     return _redis_client
 
 
+# Temporary "all customer messages get redirected to the other number"
+# mode. Active while settings.bot_redirect_enabled is true. Customers
+# can bypass by prefixing their message with the literal word "bot"
+# (case-insensitive, optional separator) — operator's testing escape
+# hatch so the bot can still be exercised end-to-end while real
+# customer traffic is parked.
+_BOT_REDIRECT_MESSAGE = (
+    "Olá! 🍕 Aqui é da Pizzaria Planalto. Esse canal está em ajustes no "
+    "momento — pra fazer seu pedido, fala com a gente direto no "
+    "+55 17 3237-1112 que te respondemos rapidinho. Obrigado pela paciência! 😊"
+)
+_BOT_KEYWORD_RE = re.compile(
+    r"^\s*bot\b[\s:,.!?\-]*(.*)$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
 # Pure greeting messages — single short phrase, no question, no context.
 # When a fresh conversation starts with one of these AND the pizzaria is
 # open, the LLM almost always replies with the same boilerplate Bia
@@ -1423,6 +1440,45 @@ async def process_incoming(
     state["customer_id"] = customer.id
     if customer.name and not state.get("customer_name"):
         state["customer_name"] = customer.name
+
+    # ---------- Redirect mode ----------
+    # While settings.bot_redirect_enabled is true, real customer traffic
+    # gets a fixed "talk to us at the other number" reply and the LLM is
+    # bypassed entirely. A message starting with "bot" lets the operator
+    # exercise the bot during this period — the "bot" prefix is stripped
+    # and the rest of the pipeline (greeting fast-path, LLM, tools) runs
+    # on whatever follows.
+    if settings.bot_redirect_enabled:
+        m = _BOT_KEYWORD_RE.match(text or "")
+        if m:
+            stripped = (m.group(1) or "").strip()
+            # Plain "bot" with no payload → treat as "oi" so the greeting
+            # fast-path can fire and the tester gets an instant response.
+            text = stripped or "oi"
+        else:
+            await _persist_message(
+                db, phone=phone, customer_id=customer.id,
+                role=MessageRole.user, content=text, is_audio=is_audio,
+                media_url=media_url, media_type=media_type,
+            )
+            await _persist_message(
+                db, phone=phone, customer_id=customer.id,
+                role=MessageRole.assistant, content=_BOT_REDIRECT_MESSAGE,
+            )
+            try:
+                from app.services.websocket import manager
+                await manager.broadcast(
+                    "chat_message",
+                    {"phone": phone, "role": "user", "content": text, "is_audio": is_audio},
+                )
+                await manager.broadcast(
+                    "chat_message",
+                    {"phone": phone, "role": "assistant", "content": _BOT_REDIRECT_MESSAGE, "is_audio": False},
+                )
+            except Exception:
+                pass
+            log.info("redirect mode: replied to %s with redirect message", phone)
+            return _BOT_REDIRECT_MESSAGE
 
     # ---------- Greeting fast-path ----------
     # Most first messages are a single word "Ola" / "Oi" / "Bom dia" and the
