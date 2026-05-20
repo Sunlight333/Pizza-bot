@@ -46,6 +46,7 @@ class BotConfigBase(BaseModel):
     pizzaria_lat: Optional[float] = None
     pizzaria_lng: Optional[float] = None
     delivery_by_distance: bool = False
+    max_delivery_km: Optional[float] = None
 
 
 class BotConfigUpdate(BaseModel):
@@ -82,6 +83,7 @@ class BotConfigUpdate(BaseModel):
     pizzaria_lat: Optional[float] = None
     pizzaria_lng: Optional[float] = None
     delivery_by_distance: Optional[bool] = None
+    max_delivery_km: Optional[float] = Field(default=None, ge=0)
 
 
 class BotConfigOut(BotConfigBase):

@@ -111,3 +111,11 @@ class BotConfig(Base, TimestampMixin):
     pizzaria_lat: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)
     pizzaria_lng: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)
     delivery_by_distance: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Hard cap (km, including the DETOUR_FACTOR multiplier used in services/
+    # delivery.py). When non-null and delivery_by_distance is true, any
+    # address farther than this is treated as out-of-zone regardless of
+    # whether some band claims to cover it. Lets the operator set a single
+    # "we don't deliver beyond X km" knob without having to manage band
+    # max values one by one. NULL = no cap (legacy behavior).
+    max_delivery_km: Mapped[Optional[float]] = mapped_column(Numeric(5, 2), nullable=True)

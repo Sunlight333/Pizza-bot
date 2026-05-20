@@ -160,6 +160,21 @@ async def calculate_fee_by_distance(
         geo["lat"], geo["lng"],
     ) * DETOUR_FACTOR
 
+    # Hard cap: if the operator set max_delivery_km, anything beyond it is
+    # out-of-zone regardless of band coverage. Lets them cap the entire
+    # delivery radius with one knob instead of editing every band's max.
+    if cfg.max_delivery_km is not None and km > float(cfg.max_delivery_km):
+        return {
+            "neighborhood": None,
+            "fee": None,
+            "estimated_minutes": None,
+            "confidence": 1.0,
+            "distance_km": round(km, 2),
+            "source": "distance",
+            "out_of_zone": True,
+            "exceeded_max_km": float(cfg.max_delivery_km),
+        }
+
     band = await _lookup_band_for_distance(db, km)
     if band is None:
         return {

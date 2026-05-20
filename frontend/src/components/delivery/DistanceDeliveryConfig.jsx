@@ -30,6 +30,7 @@ export default function DistanceDeliveryConfig() {
   const [lng, setLng] = useState('')
   const [resolved, setResolved] = useState(null) // display name from last geocode
   const [enabled, setEnabled] = useState(false)
+  const [maxKm, setMaxKm] = useState('')
   const [geocoding, setGeocoding] = useState(false)
 
   // Pull values into local state whenever the config loads.
@@ -39,6 +40,7 @@ export default function DistanceDeliveryConfig() {
     setLat(cfg.pizzaria_lat ?? '')
     setLng(cfg.pizzaria_lng ?? '')
     setEnabled(!!cfg.delivery_by_distance)
+    setMaxKm(cfg.max_delivery_km ?? '')
   }, [cfg])
 
   const saveMut = useMutation({
@@ -80,11 +82,20 @@ export default function DistanceDeliveryConfig() {
       toast.error('Para ligar o cálculo por km, defina as coordenadas da pizzaria primeiro.')
       return
     }
+    let maxKmNum = null
+    if (maxKm !== '' && maxKm !== null && maxKm !== undefined) {
+      maxKmNum = Number(maxKm)
+      if (isNaN(maxKmNum) || maxKmNum <= 0) {
+        toast.error('Distância máxima precisa ser um número maior que zero (em km).')
+        return
+      }
+    }
     saveMut.mutate({
       pizzaria_address: address.trim() || null,
       pizzaria_lat: latNum,
       pizzaria_lng: lngNum,
       delivery_by_distance: enabled,
+      max_delivery_km: maxKmNum,
     })
   }
 
@@ -93,7 +104,8 @@ export default function DistanceDeliveryConfig() {
     address !== (cfg?.pizzaria_address || '') ||
     String(lat) !== String(cfg?.pizzaria_lat ?? '') ||
     String(lng) !== String(cfg?.pizzaria_lng ?? '') ||
-    enabled !== !!cfg?.delivery_by_distance
+    enabled !== !!cfg?.delivery_by_distance ||
+    String(maxKm) !== String(cfg?.max_delivery_km ?? '')
 
   return (
     <div className="glass-card p-5 space-y-4">
@@ -204,6 +216,35 @@ export default function DistanceDeliveryConfig() {
                 </>
               )}
             </p>
+          </div>
+        </label>
+
+        <label className="block">
+          <span className="text-[11px] text-white/50 uppercase tracking-wider">
+            Distância máxima de entrega (km)
+          </span>
+          <div className="flex gap-2 mt-1 items-center">
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              value={maxKm}
+              onChange={(e) => setMaxKm(e.target.value)}
+              placeholder="Ex: 8"
+              className="w-32 h-10 px-3 rounded-xl bg-white/5 border border-white/10 text-sm focus:outline-none focus:border-primary"
+              disabled={!enabled}
+            />
+            <span className="text-xs text-white/60">
+              {enabled ? (
+                maxKm === '' || maxKm === null || maxKm === undefined ? (
+                  <>Vazio = sem limite (cliente só é recusado se nenhuma faixa cobrir a distância dele).</>
+                ) : (
+                  <>Endereços acima de <strong>{maxKm} km</strong> são recusados antes mesmo de buscar faixa.</>
+                )
+              ) : (
+                <>Ative o cálculo por distância (acima) para usar o limite.</>
+              )}
+            </span>
           </div>
         </label>
       </div>
