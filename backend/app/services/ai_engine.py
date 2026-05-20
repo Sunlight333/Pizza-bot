@@ -7,6 +7,8 @@ a plain-text reply to send back.
 """
 import json
 import logging
+import random
+import re
 import time
 from datetime import timezone
 from pathlib import Path
@@ -65,6 +67,58 @@ def _get_redis() -> _redis.Redis:
     if _redis_client is None:
         _redis_client = _redis.from_url(settings.redis_url, decode_responses=True)
     return _redis_client
+
+
+# Pure greeting messages — single short phrase, no question, no context.
+# When a fresh conversation starts with one of these AND the pizzaria is
+# open, the LLM almost always replies with the same boilerplate Bia
+# greeting. Skip the round trip and answer instantly. Anything more
+# substantial than a greeting still goes through the LLM.
+_GREETING_RE = re.compile(
+    r"^\s*(ol[áa]+|oi+|oie+|oi[êe]+|opa+|salve|al[ôo]+|hey+|hi+|hello+|"
+    r"bom\s*dia|boa\s*tarde|boa\s*noite|tudo\s*bem\??|tudo\s*certo\??)"
+    r"[\s.!?😊🙂🍕]*$",
+    re.IGNORECASE,
+)
+
+_GREETINGS_NEW = (
+    "Olá! Sou a Bia, da pizzaria 🍕 Como posso te ajudar?",
+    "Oiê! Aqui é a Bia da pizzaria 😊 Em que posso ajudar hoje?",
+    "Olá! Bia falando aqui da pizzaria 🍕 O que vai ser?",
+)
+
+_GREETINGS_RETURNING = (
+    "Oi, {name}! Que bom te ver de novo 😊 O que vai ser hoje?",
+    "Olá, {name}! Saudades 🍕 Quer repetir o último pedido?",
+    "E aí, {name}! Aqui é a Bia 😊 Pode mandar o que vai querer.",
+)
+
+
+def _try_greeting_fast_path(
+    text: str, state: dict, customer_name: Optional[str], is_open: bool
+) -> Optional[str]:
+    """Return a fixed greeting reply if this turn qualifies for the fast-path.
+
+    Conditions: the message itself is a plain greeting AND the conversation
+    is truly fresh (empty cart, no prior turns, default state) AND the
+    pizzaria is currently open. Anything else falls through to the LLM so
+    context-aware logic (closed-hours message, mid-order resume, returning-
+    customer suggestion, etc.) stays intact.
+    """
+    if not is_open:
+        return None
+    if not text or not _GREETING_RE.match(text):
+        return None
+    cart = state.get("cart") or {}
+    if cart.get("items"):
+        return None
+    if state.get("context_messages"):
+        return None
+    if state.get("state") not in (None, "", "greeting"):
+        return None
+    pool = _GREETINGS_RETURNING if customer_name else _GREETINGS_NEW
+    template = random.choice(pool)
+    return template.format(name=customer_name) if customer_name else template
 
 
 async def _get_menu_bundle_cached(db: AsyncSession) -> tuple[str, str, str]:
@@ -1204,36 +1258,58 @@ async def _execute_tool_call(
                     "3-4 sugestões e perguntando o que ele quer."
                 )
             try:
-                # Stored URL is /media/products/<file>. Meta Cloud API
-                # accepts either a media_id (after upload) or a publicly
-                # reachable link; the menu images sit behind the host
-                # nginx and aren't guaranteed reachable from Meta's edge,
-                # so we read the bytes and the WA client uploads them.
-                import mimetypes
-                if url.startswith("/media/"):
-                    media_root = Path(__file__).resolve().parents[2] / "media"
-                    rel = url[len("/media/"):].lstrip("/")
-                    file_path = (media_root / rel).resolve()
-                    if not str(file_path).startswith(str(media_root.resolve())):
-                        raise ValueError("invalid menu image path")
-                    if not file_path.is_file():
-                        raise FileNotFoundError(f"menu image missing on disk: {url}")
-                    media_bytes = file_path.read_bytes()
-                    mime = mimetypes.guess_type(str(file_path))[0] or "image/jpeg"
-                    fname = file_path.name
-                else:
-                    raise ValueError(
-                        "menu image URL is not a local /media path; Meta "
-                        "Cloud API needs raw bytes or a public link"
-                    )
                 from app.services.whatsapp import client as wa
-                await wa.send_media(
-                    phone=phone,
-                    data=media_bytes,
-                    media_type="image",
-                    mime_type=mime,
-                    filename=fname,
-                )
+                rc = _get_redis()
+                cache_key = f"menu_image_media_id:{category}"
+                cached_id: Optional[str] = None
+                try:
+                    cached_id = await rc.get(cache_key)
+                except Exception:
+                    pass
+                if cached_id:
+                    send_result = await wa.send_media(
+                        phone=phone,
+                        media_type="image",
+                        cached_media_id=cached_id,
+                    )
+                    # Meta sometimes evicts media before the 30-day TTL.
+                    # If the send fails with an error, retry once via the
+                    # upload path and refresh the cache.
+                    if isinstance(send_result, dict) and send_result.get("error"):
+                        log.info("cached menu media_id stale, re-uploading: %s", cached_id)
+                        cached_id = None
+                if not cached_id:
+                    import mimetypes
+                    if url.startswith("/media/"):
+                        media_root = Path(__file__).resolve().parents[2] / "media"
+                        rel = url[len("/media/"):].lstrip("/")
+                        file_path = (media_root / rel).resolve()
+                        if not str(file_path).startswith(str(media_root.resolve())):
+                            raise ValueError("invalid menu image path")
+                        if not file_path.is_file():
+                            raise FileNotFoundError(f"menu image missing on disk: {url}")
+                        media_bytes = file_path.read_bytes()
+                        mime = mimetypes.guess_type(str(file_path))[0] or "image/jpeg"
+                        fname = file_path.name
+                    else:
+                        raise ValueError(
+                            "menu image URL is not a local /media path; Meta "
+                            "Cloud API needs raw bytes or a public link"
+                        )
+                    send_result = await wa.send_media(
+                        phone=phone,
+                        data=media_bytes,
+                        media_type="image",
+                        mime_type=mime,
+                        filename=fname,
+                    )
+                    new_id = send_result.get("media_id") if isinstance(send_result, dict) else None
+                    if new_id:
+                        try:
+                            # 25-day TTL — Meta caches 30 days, give a 5-day buffer.
+                            await rc.set(cache_key, new_id, ex=25 * 24 * 3600)
+                        except Exception:
+                            log.exception("menu media_id cache write failed (non-fatal)")
                 # Persist as an assistant message so both the admin chat viewer
                 # (real customer side) and the simulator panel can render the
                 # image. The text body is empty so the chat viewer's
@@ -1347,6 +1423,47 @@ async def process_incoming(
     state["customer_id"] = customer.id
     if customer.name and not state.get("customer_name"):
         state["customer_name"] = customer.name
+
+    # ---------- Greeting fast-path ----------
+    # Most first messages are a single word "Ola" / "Oi" / "Bom dia" and the
+    # LLM always answers with a near-identical Bia greeting. Skip the 5-9s
+    # OpenAI round trip for that one case. Only fires when the conversation
+    # is truly fresh and the pizzaria is open; otherwise we fall through so
+    # closed-hours / mid-order / handoff logic keeps working as before.
+    _cfg_for_greeting = await _get_bot_config(db)
+    if _is_open_now(_cfg_for_greeting, _local_now()):
+        fast_reply = _try_greeting_fast_path(
+            text, state, state.get("customer_name"), is_open=True,
+        )
+        if fast_reply:
+            state["context_messages"] = [
+                {"role": "user", "content": text},
+                {"role": "assistant", "content": fast_reply},
+            ]
+            await state_svc.set_state(phone, state)
+            await _persist_message(
+                db, phone=phone, customer_id=customer.id,
+                role=MessageRole.user, content=text, is_audio=is_audio,
+                media_url=media_url, media_type=media_type,
+            )
+            await _persist_message(
+                db, phone=phone, customer_id=customer.id,
+                role=MessageRole.assistant, content=fast_reply,
+            )
+            try:
+                from app.services.websocket import manager
+                await manager.broadcast(
+                    "chat_message",
+                    {"phone": phone, "role": "user", "content": text, "is_audio": is_audio},
+                )
+                await manager.broadcast(
+                    "chat_message",
+                    {"phone": phone, "role": "assistant", "content": fast_reply, "is_audio": False},
+                )
+            except Exception:
+                pass
+            log.info("greeting fast-path fired for %s — saved an LLM call", phone)
+            return fast_reply
 
     # ---------- Barrier A: input size cap ----------
     # Reject (politely) if a single message — text or transcribed audio —
@@ -1556,8 +1673,27 @@ async def process_incoming(
         )
     t_tools = time.perf_counter()
 
-    # If there were tool calls, ask GPT for the user-facing reply using the tool results
-    if tool_msgs:
+    # If there were tool calls, ask GPT for the user-facing reply using the tool results.
+    # Shortcut: when the *only* tool fired was send_menu_image, we already know
+    # the desired follow-up is a one-liner pointing at the image just sent.
+    # Skip the synthesis LLM call entirely — saves ~2s per menu request and the
+    # caption is fully predictable anyway.
+    skipped_llm2 = False
+    only_menu_image = (
+        len(msg.tool_calls or []) == 1
+        and msg.tool_calls[0].function.name == "send_menu_image"
+        and isinstance(tool_msgs[0].get("content"), str)
+        and tool_msgs[0]["content"].startswith("OK")
+    ) if tool_msgs else False
+
+    if only_menu_image:
+        reply = random.choice((
+            "Esses são nossos sabores 🍕 Manda aí, o que você quer?",
+            "Aqui ó 👇 Pode escolher e me dizer qual te interessa 😊",
+            "Esses são os sabores que temos hoje 🍕 Qual vai ser?",
+        ))
+        skipped_llm2 = True
+    elif tool_msgs:
         followup = [
             {"role": "system", "content": system_prompt},
             *context[-12:],
@@ -1592,6 +1728,8 @@ async def process_incoming(
     else:
         reply = msg.content or ""
     t_llm2 = time.perf_counter()
+    if skipped_llm2:
+        log.info("llm2 skipped — send_menu_image fast caption used for %s", phone)
 
     log.info(
         "process_incoming timing phone=%s prompt=%.2fs llm1=%.2fs tools=%.2fs llm2=%.2fs total=%.2fs n_tools=%d",

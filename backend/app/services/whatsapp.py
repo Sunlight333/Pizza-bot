@@ -312,25 +312,42 @@ class WhatsAppCloudClient:
     async def send_media(
         self,
         phone: str,
-        data: bytes,
+        data: Optional[bytes] = None,
         *,
         media_type: str = "image",  # "image" | "document" | "video"
         mime_type: str = "image/jpeg",
         caption: Optional[str] = None,
         filename: Optional[str] = None,
+        cached_media_id: Optional[str] = None,
     ) -> dict:
-        """Send an image/document/video as raw bytes.
+        """Send an image/document/video.
 
-        Caller must pass bytes (not URL or base64) — for menu images this
-        is what `ai_engine.send_menu_image` already reads off disk. Cloud
-        API accepts a media_id (after upload) or a public link; we always
-        upload because some of the menu image URLs (/media/products/<file>)
-        aren't publicly reachable from Meta's network behind the host nginx.
+        Two modes:
+          - Upload-then-send: pass `data` (raw bytes). The Cloud API
+            requires a media_id, so this method uploads to /media first
+            and uses the returned id. On success the response dict gets
+            an extra `media_id` field so the caller can cache the id
+            and skip the upload on subsequent sends (Meta caches uploads
+            for 30 days).
+          - Reuse-cached: pass `cached_media_id` (no `data` needed).
+            Skips the upload entirely, saving ~2-3s per send. Use this
+            when the caller has previously cached the id returned from
+            an upload-then-send call.
+
+        Menu images go through cache-and-reuse via ai_engine because
+        the same image is sent dozens of times per day.
         """
         await asyncio.sleep(self._media_delay_ms() / 1000)
-        media_id = await self._upload_media(
-            data, mime_type=mime_type, filename=filename or "file.bin",
-        )
+        if cached_media_id:
+            media_id = cached_media_id
+            uploaded = False
+        else:
+            if data is None:
+                return {"error": "send_media called with neither data nor cached_media_id"}
+            media_id = await self._upload_media(
+                data, mime_type=mime_type, filename=filename or "file.bin",
+            )
+            uploaded = True
         if not media_id:
             return {"error": "upload_failed"}
         body: dict[str, Any] = {"id": media_id}
@@ -338,12 +355,15 @@ class WhatsAppCloudClient:
             body["caption"] = caption
         if filename and media_type == "document":
             body["filename"] = filename
-        return await self._post_message({
+        result = await self._post_message({
             "messaging_product": "whatsapp",
             "to": self._normalize_to(phone),
             "type": media_type,
             media_type: body,
         })
+        if uploaded and isinstance(result, dict) and "error" not in result:
+            result = {**result, "media_id": media_id}
+        return result
 
     # ---------- inbound media download ----------
 
