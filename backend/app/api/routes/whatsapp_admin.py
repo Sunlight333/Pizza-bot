@@ -29,17 +29,41 @@ def _digits(phone: Optional[str]) -> Optional[str]:
     return s or None
 
 
+def _graph_error(body_text: str) -> dict:
+    """Pull the OAuthException code/subcode/message out of a Graph error body.
+
+    Meta's error envelope is `{"error": {"message": ..., "code": 190,
+    "error_subcode": 463, "type": "OAuthException", ...}}`. Surfacing
+    these to the caller turns an opaque "http_400" into something an
+    operator can act on without SSH'ing to the box.
+    """
+    import json
+    try:
+        j = json.loads(body_text or "{}")
+        err = j.get("error") or {}
+        return {
+            "code": err.get("code"),
+            "subcode": err.get("error_subcode"),
+            "type": err.get("type"),
+            "message": err.get("message"),
+        }
+    except Exception:
+        return {"code": None, "subcode": None, "type": None, "message": (body_text or "")[:200]}
+
+
 @public_router.get("/whatsapp")
 async def public_whatsapp():
     """Public summary used by the marketing landing page wa.me link.
 
-    Returns: { connected: bool, phone: str | None, status: str }
+    Returns: { connected: bool, phone: str | None, status: str,
+               error?: {code, subcode, type, message} }
 
     Without a token configured we report `not_configured` so the landing
     page can fall back to the friendly modal. With a token, we trust the
     binding (it's permanent) and only report `disconnected` when the
-    Graph probe explicitly fails — covers cases like an expired token
-    or a deleted phone number.
+    Graph probe explicitly fails. When that happens we now include the
+    Graph error envelope so an operator can tell (#190 token bad) from
+    (#100 phone-id wrong) without reading container logs.
     """
     if not wa_client.configured:
         return {"connected": False, "phone": None, "status": "not_configured"}
@@ -58,10 +82,15 @@ async def public_whatsapp():
             j = r.json()
             phone_digits = _digits(j.get("display_phone_number")) or phone_digits
             return {"connected": bool(phone_digits), "phone": phone_digits, "status": "open"}
-        return {"connected": False, "phone": None, "status": f"http_{r.status_code}"}
+        return {
+            "connected": False,
+            "phone": None,
+            "status": f"http_{r.status_code}",
+            "error": _graph_error(r.text),
+        }
     except Exception as e:
         log.warning("public whatsapp probe failed: %s", e)
-        return {"connected": False, "phone": None, "status": "error"}
+        return {"connected": False, "phone": None, "status": "error", "error": {"message": str(e)}}
 
 
 @router.get("/config")
@@ -113,6 +142,7 @@ async def status():
         return {
             "ok": False,
             "error": f"Meta returned {r.status_code}",
+            "graph_error": _graph_error(r.text),
             "body": r.text[:300],
         }
     except Exception as e:
