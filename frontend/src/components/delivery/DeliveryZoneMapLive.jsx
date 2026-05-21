@@ -45,8 +45,15 @@ export default function DeliveryZoneMapLive({ lat, lng, onMove }) {
       api.get('/api/orders/recent-locations').then((r) => r.data).catch(() => []),
   })
 
+  // Init the map exactly once, when (a) the key is present, (b) the
+  // container is mounted, and (c) the parent has supplied coords (which
+  // may arrive asynchronously after the bot-config query resolves). The
+  // `mapRef` guard prevents a second init from a later coord change —
+  // updates to lat/lng after init are handled by the next useEffect
+  // which pans the marker without recreating the map.
   useEffect(() => {
     if (!available || lat == null || lng == null) return
+    if (mapRef.current) return
     let cancelled = false
     loadMaps().then((g) => {
       if (cancelled || !g || !containerRef.current) {
@@ -80,7 +87,7 @@ export default function DeliveryZoneMapLive({ lat, lng, onMove }) {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [available])
+  }, [available, lat, lng])
 
   useEffect(() => {
     if (!ready || !markerRef.current || !mapRef.current) return
