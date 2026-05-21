@@ -11,6 +11,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,
     )
 
     database_url: str = Field(...)
@@ -58,6 +59,16 @@ class Settings(BaseSettings):
     # its existing path (Nominatim for geocode, Haversine for distance).
     # Setup walkthrough: docs/google_maps_setup.md
     google_maps_server_key: str = Field(default="")
+
+    # Browser-side key for URLs the browser fetches directly (Static Maps
+    # images in the admin Entrega simulator, Maps JS embeds). The server
+    # key cannot be used here because its IP restriction blocks every
+    # request that doesn't come from the VPS IP — Static Maps requests
+    # come from the operator's browser. Restrict this key by HTTP
+    # referrer in the Cloud Console (planaltopizzasesorvetes.com/*).
+    # Reads VITE_GOOGLE_MAPS_KEY from .env via alias so we don't have to
+    # duplicate the value into two env vars.
+    google_maps_browser_key: str = Field(default="", alias="VITE_GOOGLE_MAPS_KEY")
 
     # Per-zone toggle is in the DB (delivery_zones.use_road_distance); this
     # flag is the global kill switch — flipping it to false forces every

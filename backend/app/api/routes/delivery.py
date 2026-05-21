@@ -251,9 +251,14 @@ async def admin_simulate_delivery(
         customer_lng=g["lng"],
     )
 
-    # Build the route image. Falls back gracefully when Google isn't
-    # configured — the operator still gets the distance + fee numbers,
-    # just without the visual trajectory.
+    # Build the route image. The polyline comes from the server-side
+    # Directions call (uses google_maps_server_key, IP-restricted, OK).
+    # But the Static Maps URL itself is fetched BY THE BROWSER — so we
+    # must sign it with the browser key (referrer-restricted), not the
+    # server key. The server key is IP-restricted to the VPS, so a
+    # browser request to a Static Maps URL signed with it gets rejected
+    # and renders as a broken image. Falls back gracefully when neither
+    # key is configured.
     route_image_url: Optional[str] = None
     polyline: Optional[str] = None
     if settings.google_maps_server_key:
@@ -263,6 +268,7 @@ async def admin_simulate_delivery(
         )
         if dirs:
             polyline = dirs["polyline"]
+    if settings.google_maps_browser_key:
         params = {
             "size": "600x300",
             "scale": "2",
@@ -272,7 +278,7 @@ async def admin_simulate_delivery(
                 f"color:red|label:P|{cfg.pizzaria_lat},{cfg.pizzaria_lng}",
                 f"color:blue|label:C|{g['lat']},{g['lng']}",
             ],
-            "key": settings.google_maps_server_key,
+            "key": settings.google_maps_browser_key,
         }
         if polyline:
             params["path"] = f"weight:4|color:0x86efacdd|enc:{polyline}"
