@@ -1071,11 +1071,20 @@ async def _execute_tool_call(
             # delivery_by_distance=true and pizzaria_lat/lng set, this
             # geocodes the address (Nominatim, cached) and looks up the
             # km band; otherwise falls back to neighbourhood-name match.
+            #
+            # If the cart already has GPS coords (customer sent a WhatsApp
+            # location pin earlier in this conversation), pass them
+            # through so we skip Nominatim's address→coord step entirely
+            # — the pin is accurate to ~5m, Nominatim only to ~50m. The
+            # Google Distance Matrix call inside resolve_delivery_fee
+            # then computes road distance from these precise coords.
             zone = await delivery_svc.resolve_delivery_fee(
                 db,
                 street=args.get("street"),
                 number=args.get("number"),
                 neighborhood=args.get("neighborhood"),
+                customer_lat=cart.get("delivery_lat"),
+                customer_lng=cart.get("delivery_lng"),
             )
             if not zone:
                 return (
