@@ -111,12 +111,16 @@ export default function DeliveryZoneMapLive({ lat, lng, onMove }) {
 
     const center = { lat: Number(lat), lng: Number(lng) }
     bands.forEach((b, i) => {
-      const opacity = 0.08 + (i / Math.max(1, bands.length - 1)) * 0.20
+      // Soft light-green fill — operator must still see the street network
+      // through every band, so opacity caps at ~0.12 even on the priciest
+      // (outermost) ring. Stroke is thin and barely visible so the rings
+      // group visually rather than fighting the basemap.
+      const opacity = 0.03 + (i / Math.max(1, bands.length - 1)) * 0.09
       const circle = new g.maps.Circle({
-        strokeColor: '#ef4444',
-        strokeOpacity: 0.6,
+        strokeColor: '#4ade80',
+        strokeOpacity: 0.35,
         strokeWeight: 1,
-        fillColor: '#ef4444',
+        fillColor: '#86efac',
         fillOpacity: opacity,
         map: mapRef.current,
         center,
@@ -172,10 +176,14 @@ export default function DeliveryZoneMapLive({ lat, lng, onMove }) {
 
   return (
     <div className="glass-card p-1.5 overflow-hidden">
+      {/* Aspect ratio tuned for a comfortable landscape rectangle (~2.4:1)
+          on any viewport width — narrower than a hero image, taller than
+          a banner, enough vertical space to see the outermost band but
+          not so tall it dominates the form below. */}
       <div
         ref={containerRef}
         className="w-full rounded-lg"
-        style={{ height: 320 }}
+        style={{ aspectRatio: '2.4 / 1', maxHeight: 360, minHeight: 220 }}
       />
       <div className="px-2 py-1.5 text-[11px] text-white/50 flex items-center gap-3">
         <span>Arraste o pin para reposicionar.</span>
