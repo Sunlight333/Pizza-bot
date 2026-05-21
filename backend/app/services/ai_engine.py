@@ -98,16 +98,28 @@ _GREETING_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Greeting templates the fast-path picks from. Rules to keep them
+# customer-friendly:
+#   1. Identify the pizzaria by name on the first contact (NEW pool).
+#      A cold "Como posso te ajudar?" reads like a generic chatbot;
+#      "Aqui é da Pizzaria Planalto" sets context immediately.
+#   2. Offer at least one concrete next step — see the menu, place an
+#      order, repeat the previous one. Open-ended "pode mandar o que
+#      quiser" left customers stuck not knowing how to start.
+#   3. Use the Bia persona warmly; emoji 😊 + 🍕 reinforces the pizza
+#      context visually.
+# If you need to add a variant, keep the same shape so the random
+# choice doesn't surface a tonally jarring outlier.
 _GREETINGS_NEW = (
-    "Olá! Sou a Bia, da pizzaria 🍕 Como posso te ajudar?",
-    "Oiê! Aqui é a Bia da pizzaria 😊 Em que posso ajudar hoje?",
-    "Olá! Bia falando aqui da pizzaria 🍕 O que vai ser?",
+    "Olá! 🍕 Aqui é a Bia, da Pizzaria Planalto. Quer dar uma olhada no cardápio ou já sabe o que vai pedir? 😊",
+    "Oi! 😊 Sou a Bia, da Pizzaria Planalto. Posso te ajudar a montar o pedido — quer ver o cardápio ou já vai mandando? 🍕",
+    "Olá! 🍕 Pizzaria Planalto na escuta, aqui é a Bia. Bora pedir uma pizza? Posso te mandar o cardápio se quiser 😊",
 )
 
 _GREETINGS_RETURNING = (
-    "Oi, {name}! Que bom te ver de novo 😊 O que vai ser hoje?",
-    "Olá, {name}! Saudades 🍕 Quer repetir o último pedido?",
-    "E aí, {name}! Aqui é a Bia 😊 Pode mandar o que vai querer.",
+    "Oi, {name}! 😊 Que bom te ver de novo na Pizzaria Planalto. Quer repetir o último pedido ou ver o cardápio? 🍕",
+    "Olá, {name}! 🍕 Saudades por aqui! Posso te mandar o cardápio ou já anoto o pedido?",
+    "E aí, {name}! 😊 Aqui é a Bia da Pizzaria Planalto. Bora pedir uma pizza hoje? Quer ver o cardápio antes? 🍕",
 )
 
 
