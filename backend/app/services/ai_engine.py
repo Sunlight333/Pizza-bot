@@ -800,7 +800,11 @@ async def _build_system_prompt(db: AsyncSession, state: dict) -> str:
             f"- A borda recheada paga e adicionais pagos AINDA somam por cima "
             f"do preço fechado (o sistema calcula automaticamente).\n"
             f"- A taxa de entrega é separada e aparece no resumo como linha "
-            f"própria."
+            f"própria.\n"
+            f"- PROIBIDO perguntar 'qual metade é mais cara?' ou 'qual sabor "
+            f"é mais caro?' — com preço fechado a metade nunca é mais cara, "
+            f"toda combinação custa {with_str}. A pergunta confunde o cliente "
+            f"e revela bug. Apenas confirme os dois sabores e adicione."
         )
 
     return f"""Você é {bot_name}, atendente da pizzaria. Fale como uma pessoa de verdade:
@@ -831,7 +835,27 @@ LIMITE DE ITENS POR PEDIDO: {cfg.max_items_per_order}
 REGRAS IMPORTANTES:
 - NÃO envie o cardápio completo. Pergunte o que o cliente quer; só sugira se ele pedir.
 - Confirme sabores, tamanho, borda e adicionais antes de adicionar ao carrinho.
-- Para pizza meio-a-meio: pergunte os dois sabores e {half_pizza_rule}.{flat_price_block}
+- Para pizza meio-a-meio: pergunte os dois sabores e {half_pizza_rule}.
+
+PIZZA MEIO-A-MEIO — REGRA DURA (não falhe nessa):
+- Meio-a-meio é UMA pizza com DOIS sabores. Chame add_pizza_to_cart
+  UMA ÚNICA VEZ com flavor_ids=[id_sabor1, id_sabor2] e size=tamanho
+  pedido. NÃO chame duas vezes (uma para cada sabor) — isso adiciona
+  DUAS pizzas inteiras ao carrinho e cobra dobrado, bug grave que já
+  gerou reclamação real.
+- Se você já tinha adicionado os dois sabores como pizzas separadas
+  (chamadas duplas) e o cliente CORRIGIR ("é meio a meio, uma pizza
+  só", "não, é meio-a-meio", "uma pizza só, metade X metade Y"),
+  você DEVE: (1) chamar remove_from_cart para cada uma das pizzas
+  inteiras erradas e (2) chamar add_pizza_to_cart UMA vez com
+  flavor_ids=[id1, id2]. NUNCA deixe os itens duplicados no carrinho
+  pensando que vai "compensar no resumo" — o resumo mostra o que está
+  no carrinho de verdade, e o cliente é cobrado pelo que está lá.
+- Se o cliente disser "metade X, metade Y" desde o início (sem ter
+  adicionado nada antes), chame add_pizza_to_cart UMA vez com
+  flavor_ids=[id_X, id_Y]. Não pergunte qual sabor "vem primeiro" ou
+  qual é "mais importante" — a ordem em flavor_ids não tem efeito
+  prático no preço quando há preço fechado.{flat_price_block}
 - Use as funções disponíveis — NÃO invente preços ou IDs.
 - IDs DE PRODUTO (regra dura): cada item do CARDÁPIO acima começa com
   `[id:N]`. Esse N é o ÚNICO valor válido para flavor_ids / product_id.
@@ -1113,6 +1137,39 @@ async def _execute_tool_call(
                 args.get("extras"), args.get("quantity", 1),
                 bool(args.get("sem_massa", False)), cart_size_before,
             )
+
+            # Defensive auto-correction for the silent-doubling bug. When
+            # the LLM calls this with two flavor_ids (a meio-a-meio) and
+            # the cart's existing non-delivery items are EXACTLY those
+            # two flavors as separate single-flavor pizzas, drop them
+            # before adding the meio-a-meio. Matches the exact pattern
+            # that caused a R$ 110 charge for a R$ 55 pizza (two
+            # add_pizza_to_cart calls for whole pizzas followed by the
+            # customer saying "é meio a meio uma pizza só"). Conservative
+            # match — only fires when the existing pizza items are
+            # *exactly* the two flavors being meio-a-meio'd, with no
+            # other items in flight.
+            requested_flavor_ids = args.get("flavor_ids") or []
+            if len(requested_flavor_ids) == 2 and cart.get("items"):
+                non_delivery = [
+                    it for it in cart["items"] if not it.get("is_delivery_fee")
+                ]
+                existing_pids = sorted(
+                    it.get("product_id") for it in non_delivery
+                    if it.get("product_id") is not None
+                )
+                requested_sorted = sorted(int(x) for x in requested_flavor_ids)
+                if existing_pids == requested_sorted:
+                    log.info(
+                        "auto-removed %d stale single-flavor items for %s — "
+                        "customer corrected to meio-a-meio %s",
+                        len(non_delivery), phone, requested_sorted,
+                    )
+                    cart["items"] = [
+                        it for it in cart["items"] if it.get("is_delivery_fee")
+                    ]
+                    cart_size_before = 0
+
             item = await order_builder.add_pizza(
                 db,
                 cart,
