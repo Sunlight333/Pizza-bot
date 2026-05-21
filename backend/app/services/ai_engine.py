@@ -535,6 +535,28 @@ async def _persist_message(
     )
     await db.commit()
 
+    # Push to any connected admin WebSocket so the Conversas panel
+    # repaints without an F5. Same event shape conversations.py already
+    # broadcasts when an operator sends a manual reply — useChatStream
+    # on the frontend filters by phone and invalidates the chat query.
+    # Failures here MUST NOT bubble up: the message is already persisted,
+    # a missing live update is a UX regression, not a data one.
+    try:
+        from app.services.websocket import manager
+        await manager.broadcast(
+            "chat_message",
+            {
+                "phone": phone,
+                "role": role.value if hasattr(role, "value") else str(role),
+                "content": content,
+                "is_audio": is_audio,
+                "media_url": media_url,
+                "media_type": media_type,
+            },
+        )
+    except Exception:
+        log.exception("broadcast on _persist_message failed (non-fatal)")
+
 
 def _local_now():
     """Bot operates in São Paulo time, regardless of server TZ."""
