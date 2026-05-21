@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { MapPin, Compass, Loader2, Check, X } from 'lucide-react'
 
 import { api } from '@/services/api'
+import DeliveryZoneMapLive from '@/components/delivery/DeliveryZoneMapLive'
 
 /**
  * Distance-based delivery configuration card.
@@ -107,8 +108,25 @@ export default function DistanceDeliveryConfig() {
     enabled !== !!cfg?.delivery_by_distance ||
     String(maxKm) !== String(cfg?.max_delivery_km ?? '')
 
+  // Drag-to-reposition: persist immediately so the operator gets visual
+  // feedback that the move stuck (the marker syncs back via the cfg query
+  // refetch). Same payload shape as save() above minus the address.
+  function moveMarker(newLat, newLng) {
+    setLat(String(newLat))
+    setLng(String(newLng))
+    saveMut.mutate({
+      pizzaria_lat: newLat,
+      pizzaria_lng: newLng,
+    })
+  }
+
   return (
     <div className="glass-card p-5 space-y-4">
+      <DeliveryZoneMapLive
+        lat={lat === '' ? null : Number(lat)}
+        lng={lng === '' ? null : Number(lng)}
+        onMove={moveMarker}
+      />
       <div className="flex items-start gap-3">
         <div
           className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"

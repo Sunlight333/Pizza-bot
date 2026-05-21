@@ -173,8 +173,33 @@ async def _process_one(value: dict, msg: dict) -> None:
         cart["delivery_lat"] = lat
         cart["delivery_lng"] = lng
         cart["needs_location_pin"] = False
-        await state_svc.set_state(phone, state)
+
+        # Phase 4 enrichment: when the feature flag is on, reverse-geocode
+        # the pin so the LLM sees a real address ("Rua X, 123 — Bairro Y")
+        # in the synthetic message instead of raw coordinates. The
+        # structured components are persisted to cart state so that, when
+        # the LLM later confirms the address, set_delivery_address has
+        # everything it needs without re-prompting the customer.
         synthetic = f"[LOCALIZAÇÃO COMPARTILHADA: lat={lat}, lng={lng}]"
+        if settings.bot_location_pin_enabled:
+            try:
+                from app.services import google_maps as gmaps
+                rev = await gmaps.reverse_geocode(lat, lng)
+            except Exception:
+                rev = None
+            if rev:
+                comps = rev.get("components") or {}
+                cart["pin_formatted"] = rev.get("formatted")
+                cart["pin_components"] = comps
+                synthetic = (
+                    "[LOCALIZAÇÃO COMPARTILHADA] "
+                    f"O cliente mandou um pin que aponta para: {rev.get('formatted')}. "
+                    f"Coordenadas: lat={lat}, lng={lng}. "
+                    "Confirme com o cliente se é esse o endereço de entrega "
+                    "(rua, número, complemento) e prossiga o pedido."
+                )
+
+        await state_svc.set_state(phone, state)
         async with AsyncSessionLocal() as db:
             reply = await process_incoming(db, phone=phone, text=synthetic)
         if reply:

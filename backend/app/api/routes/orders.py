@@ -104,6 +104,43 @@ async def list_orders(
     return [_serialize_order(o) for o in res.scalars().all()]
 
 
+@router.get("/recent-locations", dependencies=[Depends(get_current_user)])
+async def recent_order_locations(
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return up to N recent orders that have stored customer coordinates,
+    for the delivery-zone map heatmap. Coordinates come from
+    `orders.delivery_lat/delivery_lng`, which the WhatsApp location-pin
+    flow populates today and the Phase 1 autocomplete will populate as it
+    rolls out. Orders without coords are silently skipped.
+
+    Used by frontend/src/components/delivery/DeliveryZoneMapLive.jsx.
+    Returns at most `limit` rows from the last 30 days.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    res = await db.execute(
+        select(Order.id, Order.order_number, Order.delivery_lat, Order.delivery_lng, Order.created_at)
+        .where(
+            Order.created_at >= cutoff,
+            Order.delivery_lat.isnot(None),
+            Order.delivery_lng.isnot(None),
+        )
+        .order_by(Order.created_at.desc())
+        .limit(max(1, min(limit, 200)))
+    )
+    return [
+        {
+            "order_id": row.id,
+            "order_number": row.order_number,
+            "lat": float(row.delivery_lat),
+            "lng": float(row.delivery_lng),
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        for row in res.all()
+    ]
+
+
 @router.get("/stats", response_model=OrderStats, dependencies=[Depends(get_current_user)])
 async def stats(db: AsyncSession = Depends(get_db)):
     now = datetime.now(timezone.utc)

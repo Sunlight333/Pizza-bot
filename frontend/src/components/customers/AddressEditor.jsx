@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 
 import { lookupCep, formatCep } from '@/utils/cep'
 import { customersApi } from '@/services/customers'
+import AddressAutocomplete from '@/components/customers/AddressAutocomplete'
 
 /**
  * Full address management for one customer.
@@ -114,8 +115,23 @@ function AddressForm({ draft, setDraft, onSubmit, onCancel, busy }) {
     draft.number?.trim() &&
     draft.neighborhood?.trim()
 
+  function applyPick(p) {
+    setDraft((d) => ({
+      ...d,
+      street: p.street || d.street,
+      number: p.number || d.number,
+      neighborhood: p.neighborhood || d.neighborhood,
+      cep: p.cep || d.cep,
+      lat: p.lat,
+      lng: p.lng,
+      place_id: p.place_id,
+    }))
+  }
+
   return (
     <div className="glass-card p-3 space-y-2.5">
+      <AddressAutocomplete onPick={applyPick} />
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
         <label className="block">
           <span className="text-[11px] text-white/50">Rótulo</span>

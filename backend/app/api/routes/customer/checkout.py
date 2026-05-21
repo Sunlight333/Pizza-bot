@@ -117,6 +117,8 @@ async def quote(
             number=address.get("number"),
             neighborhood=neighborhood,
             cep=address.get("cep"),
+            customer_lat=address.get("lat"),
+            customer_lng=address.get("lng"),
         )
         if zone is None:
             err = "out_of_zone"
@@ -185,6 +187,8 @@ async def place(
         number=address.get("number"),
         neighborhood=address.get("neighborhood"),
         cep=address.get("cep"),
+        customer_lat=address.get("lat"),
+        customer_lng=address.get("lng"),
     )
     if zone is None or zone.get("out_of_zone"):
         raise HTTPException(409, "Não entregamos neste endereço")

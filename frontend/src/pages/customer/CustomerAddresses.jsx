@@ -8,6 +8,7 @@ import { profile as profileApi, lookupCep } from '@/services/customerApi'
 import Button from '@/components/customer/Button'
 import Input from '@/components/customer/Input'
 import EmptyState from '@/components/customer/EmptyState'
+import AddressAutocomplete from '@/components/customers/AddressAutocomplete'
 
 const EMPTY = { label: 'Casa', cep: '', street: '', number: '', neighborhood: '', complement: '', reference: '' }
 
@@ -85,6 +86,18 @@ export default function CustomerAddresses() {
           {editing === -1 ? 'Novo endereço' : 'Editar endereço'}
         </h1>
         <div className="space-y-4">
+          <AddressAutocomplete
+            onPick={(p) => setDraft((d) => ({
+              ...d,
+              street: p.street || d.street,
+              number: p.number || d.number,
+              neighborhood: p.neighborhood || d.neighborhood,
+              cep: p.cep || d.cep,
+              lat: p.lat,
+              lng: p.lng,
+              place_id: p.place_id,
+            }))}
+          />
           <Input label="Rótulo (Casa, Trabalho…)" value={draft.label}
             onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
           <Input label="CEP" value={draft.cep || ''} inputMode="numeric"

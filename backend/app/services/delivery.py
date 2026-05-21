@@ -17,9 +17,11 @@ from typing import Optional
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.bot_config import BotConfig
 from app.models.delivery_zone import DeliveryZone
 from app.services import geocode as geocode_svc
+from app.services import google_maps as gmaps
 
 
 SIMILARITY_THRESHOLD = 0.35
@@ -137,28 +139,56 @@ async def calculate_fee_by_distance(
     neighborhood: Optional[str] = None,
     city: Optional[str] = None,
     cep: Optional[str] = None,
+    customer_lat: Optional[float] = None,
+    customer_lng: Optional[float] = None,
 ) -> Optional[dict]:
-    """Geocode → Haversine → band lookup. Returns:
-      - {fee, estimated_minutes, distance_km, source: 'distance', ...}  hit
-      - {out_of_zone: True, distance_km, source: 'distance', ...}        beyond last band
-      - None                                                              geocode failed / disabled
+    """Geocode → Distance Matrix (Google) → Haversine fallback → band lookup. Returns:
+      - {fee, estimated_minutes, distance_km, eta_seconds, distance_source, ...}
+        on hit (distance_source = 'google' | 'haversine')
+      - {out_of_zone: True, distance_km, ...}        beyond last band
+      - None                                          geocode failed / disabled
+
+    customer_lat/lng skips the Nominatim geocode entirely — used when the
+    customer already has coords saved (Phase 1 autocomplete or Phase 4
+    WhatsApp pin).
     """
     if not cfg or not cfg.delivery_by_distance:
         return None
     if cfg.pizzaria_lat is None or cfg.pizzaria_lng is None:
         return None
 
-    geo = await geocode_svc.geocode(
-        street=street, number=number, neighborhood=neighborhood,
-        city=city, cep=cep,
-    )
-    if not geo:
-        return None
+    # If caller didn't supply coords, fall back to address-based geocode.
+    if customer_lat is None or customer_lng is None:
+        geo = await geocode_svc.geocode(
+            street=street, number=number, neighborhood=neighborhood,
+            city=city, cep=cep,
+        )
+        if not geo:
+            return None
+        customer_lat = geo["lat"]
+        customer_lng = geo["lng"]
 
-    km = _haversine_km(
-        float(cfg.pizzaria_lat), float(cfg.pizzaria_lng),
-        geo["lat"], geo["lng"],
-    ) * DETOUR_FACTOR
+    # Try Google Distance Matrix first — real driving distance over the road
+    # network. Falls through to Haversine if the key is unset, the global
+    # toggle is off, or Google returned an error.
+    km: float
+    eta_seconds: Optional[int] = None
+    distance_source = "haversine"
+    if settings.google_maps_road_distance_enabled:
+        dm = await gmaps.distance_matrix(
+            float(cfg.pizzaria_lat), float(cfg.pizzaria_lng),
+            float(customer_lat), float(customer_lng),
+        )
+        if dm:
+            km = dm["distance_meters"] / 1000.0
+            eta_seconds = dm["duration_seconds"]
+            distance_source = "google"
+
+    if distance_source == "haversine":
+        km = _haversine_km(
+            float(cfg.pizzaria_lat), float(cfg.pizzaria_lng),
+            float(customer_lat), float(customer_lng),
+        ) * DETOUR_FACTOR
 
     # Hard cap: if the operator set max_delivery_km, anything beyond it is
     # out-of-zone regardless of band coverage. Lets them cap the entire
@@ -183,7 +213,9 @@ async def calculate_fee_by_distance(
             "estimated_minutes": None,
             "confidence": 1.0,
             "distance_km": round(km, 2),
+            "eta_seconds": eta_seconds,
             "source": "distance",
+            "distance_source": distance_source,
             "out_of_zone": True,
         }
     return {
@@ -192,7 +224,9 @@ async def calculate_fee_by_distance(
         "estimated_minutes": band.estimated_minutes,
         "confidence": 1.0,
         "distance_km": round(km, 2),
+        "eta_seconds": eta_seconds,
         "source": "distance",
+        "distance_source": distance_source,
     }
 
 
@@ -205,6 +239,8 @@ async def resolve_delivery_fee(
     neighborhood: Optional[str] = None,
     city: Optional[str] = None,
     cep: Optional[str] = None,
+    customer_lat: Optional[float] = None,
+    customer_lng: Optional[float] = None,
 ) -> Optional[dict]:
     """One-stop resolver used by the bot and the customer portal.
 
@@ -223,6 +259,7 @@ async def resolve_delivery_fee(
         result = await calculate_fee_by_distance(
             db, cfg, street=street, number=number,
             neighborhood=neighborhood, city=city, cep=cep,
+            customer_lat=customer_lat, customer_lng=customer_lng,
         )
         if result is not None:
             return result

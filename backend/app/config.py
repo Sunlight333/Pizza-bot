@@ -52,6 +52,25 @@ class Settings(BaseSettings):
     bridge_token: str = Field(default="")
     admin_phones: str = Field(default="")  # comma-separated
 
+    # Google Maps Platform — server-side key restricted by VPS IP in the
+    # Cloud Console. Optional: when empty, services/google_maps.py
+    # short-circuits to None and every caller naturally falls back to
+    # its existing path (Nominatim for geocode, Haversine for distance).
+    # Setup walkthrough: docs/google_maps_setup.md
+    google_maps_server_key: str = Field(default="")
+
+    # Per-zone toggle is in the DB (delivery_zones.use_road_distance); this
+    # flag is the global kill switch — flipping it to false forces every
+    # zone back to Haversine regardless of the DB setting. Useful as an
+    # emergency lever if Google starts returning bad data or the bill
+    # alert fires.
+    google_maps_road_distance_enabled: bool = Field(default=True)
+
+    # WhatsApp location-pin → reverse geocode flow. Off by default so an
+    # operator can ship the foundation layer without changing bot
+    # conversation behavior; flip true once Phase 4 is validated.
+    bot_location_pin_enabled: bool = Field(default=False)
+
     # Temporary redirect mode. While true, every inbound customer message
     # is auto-replied with a fixed "talk to us at the other number" text
     # and the LLM pipeline is skipped. Customers who prefix their message

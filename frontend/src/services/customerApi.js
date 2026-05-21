@@ -108,6 +108,11 @@ export const orders = {
 // ---------- tracking (public) ----------
 export const track = {
   get: (token) => client.get(`/api/customer/track/${token}`).then((r) => r.data),
+  routeImage: (token) =>
+    client
+      .get(`/api/customer/track/${token}/route-image`)
+      .then((r) => r.data)
+      .catch(() => null), // 404 when not out_for_delivery or no coords — hide cleanly
 }
 
 // ---------- BrasilAPI (CEP autocomplete; third-party, no auth) ----------

@@ -112,6 +112,8 @@ export default function CustomerTrack() {
           </p>
         </section>
 
+        <RouteImage token={token} status={data.status} />
+
         <section className="mt-6 c-card p-4 flex justify-between font-semibold text-lg">
           <span>Total</span>
           <span className="tabular">{brl(data.total)}</span>
@@ -122,5 +124,35 @@ export default function CustomerTrack() {
         </p>
       </div>
     </div>
+  )
+}
+
+/**
+ * Static-map snapshot of the delivery route (pizzeria pin + customer pin
+ * + drawn polyline). Only renders for orders in `out_for_delivery`; the
+ * endpoint 404s in every other state so this component hides itself.
+ */
+function RouteImage({ token, status }) {
+  const { data } = useQuery({
+    queryKey: ['route-image', token, status],
+    queryFn: () => trackApi.routeImage(token),
+    enabled: status === 'out_for_delivery',
+    staleTime: 5 * 60 * 1000, // 5 min in-tab, server cache is 30 min
+  })
+  if (status !== 'out_for_delivery' || !data?.url) return null
+  const minutes = data.eta_seconds ? Math.max(1, Math.round(data.eta_seconds / 60)) : null
+  return (
+    <section className="mt-6 c-card overflow-hidden">
+      <img
+        src={data.url}
+        alt="Rota da entrega"
+        className="w-full block"
+        style={{ maxHeight: 220, objectFit: 'cover' }}
+      />
+      <div className="p-3 text-[12px]" style={{ color: 'var(--c-slate-muted)' }}>
+        Trajeto estimado da pizzaria até o seu endereço
+        {minutes ? <span> · ~{minutes} min de carro</span> : null}.
+      </div>
+    </section>
   )
 }
