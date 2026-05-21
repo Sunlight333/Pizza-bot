@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { MapPin, Compass, Loader2, Check, X } from 'lucide-react'
+import { MapPin, Compass, Loader2, Check, X, Calculator, Route } from 'lucide-react'
 
 import { api } from '@/services/api'
+import { deliveryApi } from '@/services/delivery'
 import DeliveryZoneMapLive from '@/components/delivery/DeliveryZoneMapLive'
 
 /**
@@ -278,6 +279,12 @@ export default function DistanceDeliveryConfig() {
               </span>
             </div>
           </label>
+
+          {/* Address simulator — fills the trailing whitespace of the
+              right column with something genuinely useful for the
+              operator: paste any address, see the same fee + ETA + map
+              the bot would compute for a real customer at that point. */}
+          <AddressSimulator coordsSet={coordsSet} enabled={enabled} />
         </div>
 
       </div>
@@ -294,6 +301,161 @@ export default function DistanceDeliveryConfig() {
           {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
           Salvar
         </button>
+      </div>
+    </div>
+  )
+}
+
+const brl = (n) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0)
+
+/**
+ * Plug-in address tester for the admin Delivery page.
+ *
+ * Operator pastes any address → backend geocodes it (Google primary,
+ * Nominatim fallback), calculates the real driving distance + ETA
+ * through Google Distance Matrix, picks the matching delivery band,
+ * and returns a signed Static Maps URL drawing the route.
+ *
+ * Same logic the bot uses at /set_delivery_address — so the simulator
+ * is a faithful preview of what a real customer at that address would
+ * see at checkout. Useful for: phone-call quotes, scoping coverage
+ * before approving a marketing campaign in a new region, debugging
+ * "my address doesn't appear" complaints.
+ */
+function AddressSimulator({ coordsSet, enabled }) {
+  const [address, setAddress] = useState('')
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState(null)
+
+  const mut = useMutation({
+    mutationFn: deliveryApi.simulate,
+    onSuccess: (data) => {
+      setResult(data)
+      setError(null)
+      if (data && data.found === false) {
+        setError(data.reason || 'Endereço não localizado.')
+      }
+    },
+    onError: (e) => {
+      setResult(null)
+      setError(e.response?.data?.detail || 'Erro ao simular endereço.')
+    },
+  })
+
+  function submit() {
+    const a = address.trim()
+    if (!a) return
+    mut.mutate(a)
+  }
+
+  const d = result?.delivery
+  const found = result?.found && !!d
+  const outOfZone = d?.out_of_zone
+  const km = d?.distance_km
+  const etaMin = d?.eta_seconds ? Math.max(1, Math.round(d.eta_seconds / 60)) : null
+
+  return (
+    <div className="mt-2 pt-4 border-t border-white/5">
+      <h3 className="font-display text-sm mb-1 flex items-center gap-1.5">
+        <Calculator size={14} className="text-primary" />
+        Simular endereço de entrega
+      </h3>
+      <p className="text-[11px] text-white/50 mb-3">
+        Cole um endereço completo (rua, número, bairro, cidade) — o sistema
+        geocoda, calcula a distância de carro real e mostra a faixa de
+        taxa que pegaria. Mesma lógica que o bot usa no atendimento.
+      </p>
+
+      <div className="flex gap-2">
+        <input
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+          placeholder="Ex: Rua das Flores, 123, Centro, São José do Rio Preto"
+          className="flex-1 min-w-0 h-10 px-3 rounded-xl bg-white/5 border border-white/10 text-sm focus:outline-none focus:border-primary"
+          disabled={!coordsSet || mut.isPending}
+        />
+        <button
+          onClick={submit}
+          disabled={!coordsSet || !address.trim() || mut.isPending}
+          className="shrink-0 px-3 h-10 rounded-xl bg-white/10 hover:bg-white/15 disabled:opacity-40 text-sm font-medium flex items-center gap-1.5"
+        >
+          {mut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Route size={14} />}
+          Calcular
+        </button>
+      </div>
+
+      {!coordsSet && (
+        <p className="text-[11px] text-warning/80 mt-2">
+          Defina lat/lng da pizzaria acima antes de simular.
+        </p>
+      )}
+
+      {error && (
+        <div className="mt-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-sm text-red-200 flex items-start gap-2">
+          <X size={14} className="mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {found && (
+        <div className="mt-3 glass-card p-3 space-y-3">
+          <div className="text-[11px] text-white/40 flex items-start gap-1.5">
+            <Check size={12} className="text-success mt-0.5 shrink-0" />
+            <span className="truncate">
+              <strong className="text-white/70">Match:</strong> {result.address.formatted}
+              <span className="text-white/30 ml-2">
+                ({result.address.source === 'google' ? 'Google' : 'Nominatim'})
+              </span>
+            </span>
+          </div>
+
+          {outOfZone ? (
+            <div className="text-sm text-warning">
+              Fora da área de entrega
+              {km != null && <span className="text-white/60"> · distância {km} km</span>}
+              {d.exceeded_max_km != null && (
+                <span className="text-white/60"> · acima do limite {d.exceeded_max_km} km</span>
+              )}
+            </div>
+          ) : d.fee == null ? (
+            <div className="text-sm text-warning">
+              {enabled
+                ? 'Distância calculada, mas nenhuma faixa cobre esse km. Adicione uma faixa apropriada na tabela.'
+                : 'Cálculo por distância desligado — ative o toggle acima para que o bot use essa lógica.'}
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2 text-sm">
+              <Stat label="Distância" value={km != null ? `${km} km` : '—'} />
+              <Stat label="ETA carro" value={etaMin ? `~${etaMin} min` : '—'} />
+              <Stat label="Taxa" value={brl(d.fee)} accent />
+            </div>
+          )}
+
+          {result.route_image_url && (
+            <img
+              src={result.route_image_url}
+              alt="Rota pizzaria → cliente"
+              className="w-full rounded-lg block"
+              style={{ maxHeight: 220, objectFit: 'cover' }}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Stat({ label, value, accent }) {
+  return (
+    <div className="p-2 rounded-lg bg-white/5">
+      <div className="text-[10px] text-white/40 uppercase tracking-wider">{label}</div>
+      <div
+        className="text-sm font-semibold mt-0.5"
+        style={accent ? { color: '#86efac' } : undefined}
+      >
+        {value}
       </div>
     </div>
   )

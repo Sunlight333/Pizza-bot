@@ -6,4 +6,6 @@ export const deliveryApi = {
   update: (id, data) => api.put(`/api/delivery/zones/${id}`, data).then((r) => r.data),
   remove: (id) => api.delete(`/api/delivery/zones/${id}`),
   lookup: (q) => api.get('/api/delivery/zones/lookup', { params: { q } }).then((r) => r.data),
+  simulate: (address) =>
+    api.post('/api/delivery/simulate', { address }).then((r) => r.data),
 }

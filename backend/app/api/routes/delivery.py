@@ -181,3 +181,112 @@ async def admin_geocode(payload: GeocodeQuery):
         lng=res["lng"],
         display_name=res.get("display_name"),
     )
+
+
+class SimulateQuery(BaseModel):
+    address: str = Field(..., min_length=3, max_length=300)
+
+
+@router.post("/simulate")
+async def admin_simulate_delivery(
+    payload: SimulateQuery,
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin "test an address" simulator.
+
+    Geocodes the typed address, runs the exact same fee-resolution path
+    the bot uses (calculate_fee_by_distance with the saved pizzeria
+    coords), and returns:
+      - the resolved address + coords
+      - driving distance + ETA from Google (Haversine fallback if Google
+        is unavailable)
+      - the matched delivery band (fee + estimated_minutes) or out-of-
+        zone reason
+      - a signed Static Maps URL drawing the route between the two pins
+        so the operator can eyeball the trajectory
+
+    Used by the admin Delivery page panel that lets operators quote a
+    delivery before the customer places the order.
+    """
+    import urllib.parse
+
+    from app.config import settings
+    from app.models.bot_config import BotConfig
+    from app.services import geocode as nominatim_svc
+    from app.services import google_maps as gmaps
+
+    cfg = (await db.execute(select(BotConfig).where(BotConfig.id == 1))).scalar_one_or_none()
+    if not cfg or cfg.pizzaria_lat is None or cfg.pizzaria_lng is None:
+        raise HTTPException(
+            409, "Defina lat/lng da pizzaria antes de simular endereços.",
+        )
+
+    # Try Google first (better Brazilian coverage on new addresses),
+    # fall back to Nominatim if Google isn't configured or didn't find it.
+    g = None
+    if settings.google_maps_server_key:
+        g = await gmaps.geocode(payload.address)
+    if not g:
+        n = await nominatim_svc.geocode(free_form=payload.address)
+        if n:
+            g = {
+                "lat": n["lat"],
+                "lng": n["lng"],
+                "formatted": n.get("display_name"),
+                "source": "nominatim",
+            }
+    if not g:
+        return {
+            "found": False,
+            "reason": "Endereço não localizado pelo Google nem pelo Nominatim.",
+        }
+
+    # Run the bot's exact fee resolver with the geocoded coords so the
+    # result is identical to what a real customer at that address would
+    # see at checkout.
+    zone = await svc.resolve_delivery_fee(
+        db,
+        cfg=cfg,
+        customer_lat=g["lat"],
+        customer_lng=g["lng"],
+    )
+
+    # Build the route image. Falls back gracefully when Google isn't
+    # configured — the operator still gets the distance + fee numbers,
+    # just without the visual trajectory.
+    route_image_url: Optional[str] = None
+    polyline: Optional[str] = None
+    if settings.google_maps_server_key:
+        dirs = await gmaps.directions(
+            float(cfg.pizzaria_lat), float(cfg.pizzaria_lng),
+            float(g["lat"]), float(g["lng"]),
+        )
+        if dirs:
+            polyline = dirs["polyline"]
+        params = {
+            "size": "600x300",
+            "scale": "2",
+            "maptype": "roadmap",
+            "language": "pt-BR",
+            "markers": [
+                f"color:red|label:P|{cfg.pizzaria_lat},{cfg.pizzaria_lng}",
+                f"color:blue|label:C|{g['lat']},{g['lng']}",
+            ],
+            "key": settings.google_maps_server_key,
+        }
+        if polyline:
+            params["path"] = f"weight:4|color:0x86efacdd|enc:{polyline}"
+        qs = urllib.parse.urlencode(params, doseq=True, safe="|:,;")
+        route_image_url = f"https://maps.googleapis.com/maps/api/staticmap?{qs}"
+
+    return {
+        "found": True,
+        "address": {
+            "formatted": g.get("formatted"),
+            "lat": g["lat"],
+            "lng": g["lng"],
+            "source": g.get("source", "google"),
+        },
+        "delivery": zone,  # contains fee, distance_km, eta_seconds, etc.
+        "route_image_url": route_image_url,
+    }
