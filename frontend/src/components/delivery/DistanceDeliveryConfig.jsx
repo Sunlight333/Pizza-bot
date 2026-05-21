@@ -121,47 +121,38 @@ export default function DistanceDeliveryConfig() {
   }
 
   return (
-    <div className="glass-card p-5 space-y-5">
-      {/* Square live map, centered at the top of the section. Its own
-          component clamps width to 420px so it never dominates the form. */}
-      <DeliveryZoneMapLive
-        lat={lat === '' ? null : Number(lat)}
-        lng={lng === '' ? null : Number(lng)}
-        onMove={moveMarker}
-      />
+    <div className="glass-card p-5">
+      {/* Two-column section. Left = the entire form (more dense, taller
+          on small screens). Right = the live map (square, fills its
+          column). Collapses to single column under lg so mid-size
+          screens still get a sensible vertical stack. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,520px)] gap-5 items-start">
+        {/* LEFT — title, description, address, coords, mode, max radius */}
+        <div className="space-y-4 min-w-0">
+          <div className="flex items-start gap-3">
+            <div
+              className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+              style={{
+                background: enabled ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
+                color: enabled ? '#86efac' : 'white',
+              }}
+            >
+              <Compass size={18} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="font-display text-lg leading-tight">
+                Cálculo de entrega por distância (km)
+              </h2>
+              <p className="text-sm text-white/60 mt-1">
+                Quando ligado, o bot e o site geocodificam o endereço do
+                cliente e selecionam a faixa de entrega pela distância (em
+                km) até a pizzaria. As faixas (0–2 km, 2,1–3 km, etc.)
+                são editadas na tabela abaixo — cada uma precisa ter{' '}
+                <strong>distância mín./máx.</strong> preenchida.
+              </p>
+            </div>
+          </div>
 
-      {/* Title + description spans full width so the explanatory copy
-          isn't squeezed into a narrow column on desktop. */}
-      <div className="flex items-start gap-3">
-        <div
-          className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
-          style={{
-            background: enabled ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
-            color: enabled ? '#86efac' : 'white',
-          }}
-        >
-          <Compass size={18} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h2 className="font-display text-lg leading-tight">
-            Cálculo de entrega por distância (km)
-          </h2>
-          <p className="text-sm text-white/60 mt-1">
-            Quando ligado, o bot e o site geocodificam o endereço do cliente
-            e selecionam a faixa de entrega pela distância (em km) até a
-            pizzaria. As faixas (0–2 km, 2,1–3 km, etc.) são editadas na
-            tabela abaixo — cada uma precisa ter <strong>distância mín./máx.</strong>{' '}
-            preenchida.
-          </p>
-        </div>
-      </div>
-
-      {/* Two-column form. Left = "where the pizzeria is" (address +
-          coords). Right = "how we use it" (mode toggle + max radius).
-          Collapses to a single column under md so mobile stays usable. */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-        {/* LEFT — location */}
-        <div className="space-y-3">
           <label className="block">
             <span className="text-[11px] text-white/50 uppercase tracking-wider">
               Endereço da pizzaria
@@ -217,10 +208,7 @@ export default function DistanceDeliveryConfig() {
               <span><strong className="text-white/70">Match:</strong> {resolved}</span>
             </div>
           )}
-        </div>
 
-        {/* RIGHT — usage rules */}
-        <div className="space-y-3">
           <label
             className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors
               ${enabled ? 'border-success/40 bg-success/5' : 'border-white/10 bg-white/5'}`}
@@ -237,14 +225,13 @@ export default function DistanceDeliveryConfig() {
               <p className="text-xs text-white/60 mt-0.5">
                 {coordsSet ? (
                   <>
-                    Bot e site vão geocodificar o endereço do cliente e usar a
-                    faixa de km correta. Bairros não cadastrados ainda podem
-                    ser entregues, desde que caiam dentro de alguma faixa.
+                    Bot e site vão geocodificar o endereço do cliente e usar
+                    a faixa de km correta. Bairros não cadastrados ainda
+                    podem ser entregues, desde que caiam dentro de alguma
+                    faixa.
                   </>
                 ) : (
-                  <>
-                    Defina latitude e longitude da pizzaria antes de ligar.
-                  </>
+                  <>Defina latitude e longitude da pizzaria antes de ligar.</>
                 )}
               </p>
             </div>
@@ -279,9 +266,20 @@ export default function DistanceDeliveryConfig() {
             </div>
           </label>
         </div>
+
+        {/* RIGHT — live map. Sticky-ish: stays at the top of its column
+            while the form on the left grows, so the operator always
+            sees the bands as they tweak max-km or coords. */}
+        <div className="lg:sticky lg:top-4 self-start w-full">
+          <DeliveryZoneMapLive
+            lat={lat === '' ? null : Number(lat)}
+            lng={lng === '' ? null : Number(lng)}
+            onMove={moveMarker}
+          />
+        </div>
       </div>
 
-      <div className="flex items-center justify-between pt-2 border-t border-white/5">
+      <div className="flex items-center justify-between mt-5 pt-3 border-t border-white/5">
         <span className="text-[11px] text-white/40">
           Geocodificação: OpenStreetMap Nominatim (cache de 7 dias).
         </span>

@@ -155,25 +155,14 @@ export default function DeliveryZoneMapLive({ lat, lng, onMove }) {
     })
   }, [ready, recent])
 
-  // Single width constraint shared by the map and every fallback state
-  // so the page layout doesn't jump when the component swaps between
-  // them (e.g. while bot-config is still loading and lat/lng is null).
-  // 420px hits a sweet spot: big enough to read São José do Rio Preto
-  // street labels comfortably, small enough to leave room for the form
-  // beside or below it on standard 1366+ desktops.
-  const FRAME = {
-    maxWidth: 420,
-    width: '100%',
-    marginLeft: 'auto',
-    marginRight: 'auto',
-  }
+  // No max-width here — the parent column determines the size. In the
+  // side-by-side layout in DistanceDeliveryConfig the map fills the
+  // right column completely, which gives the operator a noticeably
+  // bigger surface to inspect bands and drag the pin.
 
   if (!available) {
     return (
-      <div
-        className="glass-card p-4 text-sm text-white/50 flex items-center gap-2"
-        style={FRAME}
-      >
+      <div className="glass-card p-4 text-sm text-white/50 flex items-center gap-2 w-full">
         <MapIcon size={16} />
         Configure <code className="text-white/70">VITE_GOOGLE_MAPS_KEY</code> para
         habilitar o mapa visual.
@@ -183,10 +172,7 @@ export default function DeliveryZoneMapLive({ lat, lng, onMove }) {
 
   if (lat == null || lng == null) {
     return (
-      <div
-        className="glass-card p-4 text-sm text-white/50 flex items-center gap-2"
-        style={FRAME}
-      >
+      <div className="glass-card p-4 text-sm text-white/50 flex items-center gap-2 w-full">
         <MapIcon size={16} />
         Defina as coordenadas da pizzaria abaixo para visualizar no mapa.
       </div>
@@ -194,11 +180,11 @@ export default function DeliveryZoneMapLive({ lat, lng, onMove }) {
   }
 
   return (
-    <div className="glass-card p-1.5 overflow-hidden" style={FRAME}>
+    <div className="glass-card p-1.5 overflow-hidden w-full">
       {/* Square (1:1) tile — every delivery band radiates symmetrically
-          from the centre pin, so a square frames them naturally without
-          wasted whitespace. Bounded by FRAME.maxWidth (420) so it never
-          dominates the form below it on wide displays. */}
+          from the centre pin, so a square frames them naturally. The
+          parent column owns the size; the map happily scales up to
+          fill it. */}
       <div
         ref={containerRef}
         className="w-full rounded-lg"
