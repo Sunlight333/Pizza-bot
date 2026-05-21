@@ -1401,10 +1401,50 @@ async def _execute_tool_call(
                 amount = float(args.get("amount") or 0)
             except (TypeError, ValueError):
                 amount = 0.0
-            cart["change_for"] = round(max(0.0, amount), 2)
-            if amount > 0:
+            amount = round(max(0.0, amount), 2)
+            _sub, _fee, total = order_builder.cart_totals(cart)
+            total = round(float(total), 2)
+            fmt_total = f"R$ {total:.2f}".replace(".", ",")
+
+            # Shortfall: customer's cash is positive but less than the
+            # total. That's NOT troco — it's dinheiro insuficiente.
+            # The 0.01 cushion absorbs float rounding noise (R$ 119,99
+            # vs 120,00 is exact, not short).
+            if amount > 0 and amount < total - 0.01:
+                shortfall = round(total - amount, 2)
+                fmt_amount = f"R$ {amount:.2f}".replace(".", ",")
+                fmt_short = f"R$ {shortfall:.2f}".replace(".", ",")
                 return (
-                    f"OK — registrado: troco para R$ {amount:.2f}. Agora mostre o "
+                    f"BLOQUEADO: o cliente disse que vai pagar com {fmt_amount} "
+                    f"em dinheiro, mas o total do pedido é {fmt_total} — "
+                    f"faltam {fmt_short}. Isso NÃO é troco, é dinheiro "
+                    "INSUFICIENTE. Avise o cliente com tom amigável que "
+                    f"o valor está abaixo do total e pergunte: (a) se ele "
+                    "quer pagar com uma nota maior em dinheiro (e o "
+                    "motoboy leva o troco) ou (b) completar a diferença "
+                    "com PIX/cartão na entrega. NÃO chame confirm_order "
+                    "enquanto isso não estiver resolvido."
+                )
+
+            # Exact payment: customer named an amount within rounding
+            # distance of the total. No change needed — record as 0 so
+            # the motoboy ticket reads "paga exato" rather than the
+            # confusing "troco de R$ 0,00".
+            if amount > 0 and amount <= total + 0.01:
+                cart["change_for"] = 0.0
+                return (
+                    f"OK — registrado: cliente paga o valor exato ({fmt_total} "
+                    "sem troco). Mostre o resumo e peça confirmação."
+                )
+
+            cart["change_for"] = amount
+            if amount > 0:
+                change = round(amount - total, 2)
+                fmt_amount = f"R$ {amount:.2f}".replace(".", ",")
+                fmt_change = f"R$ {change:.2f}".replace(".", ",")
+                return (
+                    f"OK — registrado: cliente vai pagar com {fmt_amount} "
+                    f"em dinheiro, troco de {fmt_change}. Agora mostre o "
                     "resumo completo do pedido e peça confirmação."
                 )
             return (
