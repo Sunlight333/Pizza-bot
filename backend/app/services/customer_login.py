@@ -55,12 +55,27 @@ def _gen_token() -> str:
 
 
 def mask_phone(phone: str) -> str:
-    """E.g. 5543998150536 → '+55 43 ****-0536'."""
+    """Render a partial phone for the OTP confirmation screen.
+
+    Brazilian mobile (international form, 13 digits) keeps the leading
+    9 visible so the customer instantly recognises that the number is
+    their mobile — masking it produced confusing strings like
+    '+55 43 ****-0536' that read as an 8-digit landline and made
+    customers think the OTP went to a wrong line. The 5-digit
+    subscriber prefix becomes '9****' (1 known + 4 masked), then the
+    last 4 digits are shown.
+
+    Examples:
+      5543998150536  → '+55 (43) 9****-0536'   (13-digit mobile)
+      554333334321   → '+55 (43) ****-4321'    (12-digit legacy/landline)
+    """
     d = re.sub(r"\D", "", phone or "")
     if len(d) < 10:
         return ""
-    tail = d[-4:]
-    return f"+{d[:2]} {d[2:4]} ****-{tail}"
+    cc, ddd, tail = d[:2], d[2:4], d[-4:]
+    if len(d) == 13 and d[4] == "9":
+        return f"+{cc} ({ddd}) 9****-{tail}"
+    return f"+{cc} ({ddd}) ****-{tail}"
 
 
 def _key(token: str) -> str:
