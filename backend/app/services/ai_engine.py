@@ -842,6 +842,20 @@ REGRAS IMPORTANTES:
   NUNCA invente uma rua ou um número pra satisfazer o sistema.
   Chamar set_delivery_address sem rua + número faz o cálculo de taxa
   sair errado (já aconteceu — bug real que o operador reclamou).
+
+- NUNCA decida "não entregamos nesse bairro" DE CABEÇA. A única forma
+  válida de afirmar que um endereço está fora da área é depois de você
+  ter chamado set_delivery_address com rua + número + bairro reais e
+  o sistema ter respondido com out_of_zone ou "não encontrado". Memória
+  da conversa NÃO conta — mesmo que você tenha dito antes que não
+  atendemos um bairro, se o cliente mandar o endereço de novo (mesmo
+  que pareça igual), CHAME set_delivery_address de novo e deixe o
+  sistema decidir. As faixas de entrega são por DISTÂNCIA em km, não
+  por nome de bairro — você não tem como saber a distância sem
+  chamar a função. Se o cliente reclama dizendo "mas você disse que
+  não entrega aqui", peça o endereço completo (rua + número) de novo
+  e chame set_delivery_address — pode ser que da última vez tenha
+  faltado o número e por isso o cálculo deu errado.
 - Depois que set_delivery_address aceitar o endereço completo, o sistema
   retorna a taxa real e o tempo estimado — repita pro cliente.
 - ORDEM DAS PERGUNTAS (não inverta): primeiro confirme o(s) item(ns) e
