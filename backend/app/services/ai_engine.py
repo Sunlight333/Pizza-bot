@@ -1650,6 +1650,19 @@ async def process_incoming(
     if customer.name and not state.get("customer_name"):
         state["customer_name"] = customer.name
 
+    # Persist + broadcast the inbound message IMMEDIATELY so the admin
+    # Conversas page shows the customer's text without waiting for the
+    # bot's full LLM round-trip (which can take 5-10s and was visibly
+    # lagging the admin UI). Every early-return path below now only
+    # needs to persist its assistant reply — _persist_message also
+    # broadcasts via the live websocket, so the admin viewer repaints
+    # the moment the row hits the DB.
+    await _persist_message(
+        db, phone=phone, customer_id=customer.id,
+        role=MessageRole.user, content=text, is_audio=is_audio,
+        media_url=media_url, media_type=media_type,
+    )
+
     # ---------- Redirect mode ----------
     # While settings.bot_redirect_enabled is true, real customer traffic
     # gets a fixed "talk to us at the other number" reply and the LLM is
@@ -1673,27 +1686,11 @@ async def process_incoming(
             # bypass the redirect.
             await state_svc.set_state(phone, state)
         else:
-            await _persist_message(
-                db, phone=phone, customer_id=customer.id,
-                role=MessageRole.user, content=text, is_audio=is_audio,
-                media_url=media_url, media_type=media_type,
-            )
+            # User message was already persisted+broadcast above.
             await _persist_message(
                 db, phone=phone, customer_id=customer.id,
                 role=MessageRole.assistant, content=_BOT_REDIRECT_MESSAGE,
             )
-            try:
-                from app.services.websocket import manager
-                await manager.broadcast(
-                    "chat_message",
-                    {"phone": phone, "role": "user", "content": text, "is_audio": is_audio},
-                )
-                await manager.broadcast(
-                    "chat_message",
-                    {"phone": phone, "role": "assistant", "content": _BOT_REDIRECT_MESSAGE, "is_audio": False},
-                )
-            except Exception:
-                pass
             log.info("redirect mode: replied to %s with redirect message", phone)
             return _BOT_REDIRECT_MESSAGE
 
@@ -1714,21 +1711,13 @@ async def process_incoming(
                 {"role": "assistant", "content": fast_reply},
             ]
             await state_svc.set_state(phone, state)
-            await _persist_message(
-                db, phone=phone, customer_id=customer.id,
-                role=MessageRole.user, content=text, is_audio=is_audio,
-                media_url=media_url, media_type=media_type,
-            )
+            # User message was already persisted+broadcast above.
             await _persist_message(
                 db, phone=phone, customer_id=customer.id,
                 role=MessageRole.assistant, content=fast_reply,
             )
             try:
                 from app.services.websocket import manager
-                await manager.broadcast(
-                    "chat_message",
-                    {"phone": phone, "role": "user", "content": text, "is_audio": is_audio},
-                )
                 await manager.broadcast(
                     "chat_message",
                     {"phone": phone, "role": "assistant", "content": fast_reply, "is_audio": False},
@@ -1757,27 +1746,11 @@ async def process_incoming(
                 "Foi muita coisa de uma vez 😊 Me manda em partes menores que "
                 "assim eu consigo te ajudar bem!"
             )
-        await _persist_message(
-            db, phone=phone, customer_id=customer.id,
-            role=MessageRole.user, content=text, is_audio=is_audio,
-            media_url=media_url, media_type=media_type,
-        )
+        # User message was already persisted+broadcast above.
         await _persist_message(
             db, phone=phone, customer_id=customer.id,
             role=MessageRole.assistant, content=polite,
         )
-        try:
-            from app.services.websocket import manager
-            await manager.broadcast(
-                "chat_message",
-                {"phone": phone, "role": "user", "content": text, "is_audio": is_audio},
-            )
-            await manager.broadcast(
-                "chat_message",
-                {"phone": phone, "role": "assistant", "content": polite, "is_audio": False},
-            )
-        except Exception:
-            pass
         return polite
 
     cfg = await _get_bot_config(db)
@@ -1792,24 +1765,11 @@ async def process_incoming(
     if cfg.privacy_notice and not customer.privacy_notice_sent:
         customer.privacy_notice_sent = True
         await db.commit()
-        # Persist + broadcast as if the bot replied
-        await _persist_message(
-            db, phone=phone, customer_id=customer.id,
-            role=MessageRole.user, content=text, is_audio=is_audio,
-            media_url=media_url, media_type=media_type,
-        )
+        # User message was already persisted+broadcast above.
         await _persist_message(
             db, phone=phone, customer_id=customer.id,
             role=MessageRole.assistant, content=cfg.privacy_notice,
         )
-        try:
-            from app.services.websocket import manager
-            await manager.broadcast(
-                "chat_message",
-                {"phone": phone, "role": "assistant", "content": cfg.privacy_notice, "is_audio": False},
-            )
-        except Exception:
-            pass
         return cfg.privacy_notice
 
     # ---------- Barrier C: per-phone hourly cap ----------
@@ -1826,27 +1786,11 @@ async def process_incoming(
             "Já trocamos várias mensagens, hein! 😊 "
             "Vou pedir pra um colega aqui te dar mais atenção. Já já alguém fala com você."
         )
-        await _persist_message(
-            db, phone=phone, customer_id=customer.id,
-            role=MessageRole.user, content=text, is_audio=is_audio,
-            media_url=media_url, media_type=media_type,
-        )
+        # User message was already persisted+broadcast above.
         await _persist_message(
             db, phone=phone, customer_id=customer.id,
             role=MessageRole.assistant, content=polite,
         )
-        try:
-            from app.services.websocket import manager
-            await manager.broadcast(
-                "chat_message",
-                {"phone": phone, "role": "user", "content": text, "is_audio": is_audio},
-            )
-            await manager.broadcast(
-                "chat_message",
-                {"phone": phone, "role": "assistant", "content": polite, "is_audio": False},
-            )
-        except Exception:
-            pass
         return polite
 
     # Token-budget guardrail — short-circuit to handoff before paying for another GPT-4o call
@@ -1889,21 +1833,13 @@ async def process_incoming(
             "Tô com muito atendimento simultâneo agora 🙏 "
             "Me dá um minutinho que já te respondo direitinho!"
         )
-        await _persist_message(
-            db, phone=phone, customer_id=customer.id,
-            role=MessageRole.user, content=text, is_audio=is_audio,
-            media_url=media_url, media_type=media_type,
-        )
+        # User message was already persisted+broadcast above.
         await _persist_message(
             db, phone=phone, customer_id=customer.id,
             role=MessageRole.assistant, content=polite,
         )
         try:
             from app.services.websocket import manager
-            await manager.broadcast(
-                "chat_message",
-                {"phone": phone, "role": "user", "content": text, "is_audio": is_audio},
-            )
             await manager.broadcast(
                 "chat_message",
                 {"phone": phone, "role": "assistant", "content": polite, "is_audio": False},
@@ -2021,31 +1957,13 @@ async def process_incoming(
     state["context_messages"] = context[-20:]
     await state_svc.set_state(phone, state)
 
-    # Persistent chat history (DB)
-    await _persist_message(
-        db, phone=phone, customer_id=state.get("customer_id"),
-        role=MessageRole.user, content=text, is_audio=is_audio,
-            media_url=media_url, media_type=media_type,
-    )
+    # Persistent chat history (DB). The inbound user row was already
+    # persisted+broadcast at the top of process_incoming so the admin
+    # UI updated immediately; here we just record the bot's reply.
     if reply:
         await _persist_message(
             db, phone=phone, customer_id=state.get("customer_id"),
             role=MessageRole.assistant, content=reply,
         )
-
-    # Broadcast for the live conversation viewer
-    try:
-        from app.services.websocket import manager
-        await manager.broadcast(
-            "chat_message",
-            {"phone": phone, "role": "user", "content": text, "is_audio": is_audio},
-        )
-        if reply:
-            await manager.broadcast(
-                "chat_message",
-                {"phone": phone, "role": "assistant", "content": reply, "is_audio": False},
-            )
-    except Exception:
-        pass
 
     return reply.strip() or None

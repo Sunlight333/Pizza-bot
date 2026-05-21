@@ -11,6 +11,55 @@ import { getApiBase } from '@/utils/apiUrl'
 const fmtTime = (iso) =>
   new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
+// Per-day label rendered as a chip between message groups when the day
+// changes between two consecutive messages. Today/yesterday get friendly
+// names; older messages show the date so the operator can read a long
+// conversation without losing track of which day each turn happened on.
+const fmtDayLabel = (iso) => {
+  const d = new Date(iso)
+  const today = new Date()
+  const startOfDay = (x) => {
+    const c = new Date(x)
+    c.setHours(0, 0, 0, 0)
+    return c
+  }
+  const diffDays = Math.round(
+    (startOfDay(today) - startOfDay(d)) / (1000 * 60 * 60 * 24)
+  )
+  if (diffDays === 0) return 'Hoje'
+  if (diffDays === 1) return 'Ontem'
+  if (diffDays > 1 && diffDays < 7) {
+    const wd = d.toLocaleDateString('pt-BR', { weekday: 'long' })
+    const dm = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+    return `${wd.charAt(0).toUpperCase() + wd.slice(1)}, ${dm}`
+  }
+  return d.toLocaleDateString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  })
+}
+
+// Two ISO timestamps fall on the same local calendar day?
+const sameDay = (a, b) => {
+  if (!a || !b) return false
+  const da = new Date(a)
+  const db = new Date(b)
+  return (
+    da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate()
+  )
+}
+
+function DaySeparator({ iso }) {
+  return (
+    <div className="flex justify-center my-3 select-none">
+      <span className="text-[11px] uppercase tracking-wider text-white/40 bg-white/5 border border-glass-border px-3 py-1 rounded-full">
+        {fmtDayLabel(iso)}
+      </span>
+    </div>
+  )
+}
+
 // Media URLs are stored as `/media/chats/<file>`; prefix with the API base so
 // the <img> / <audio> tags hit the backend (same nginx proxy already serves
 // /media in production).
@@ -155,7 +204,16 @@ export default function ChatViewer({ phone }) {
         </div>
       ) : (
         <AnimatePresence initial={false}>
-          {messages.map((m) => <Bubble key={m.id} msg={m} />)}
+          {messages.map((m, i) => {
+            const prev = i > 0 ? messages[i - 1] : null
+            const needsSeparator = !prev || !sameDay(prev.created_at, m.created_at)
+            return (
+              <div key={m.id}>
+                {needsSeparator && <DaySeparator iso={m.created_at} />}
+                <Bubble msg={m} />
+              </div>
+            )
+          })}
         </AnimatePresence>
       )}
     </div>
