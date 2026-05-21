@@ -1475,17 +1475,25 @@ async def process_incoming(
     # ---------- Redirect mode ----------
     # While settings.bot_redirect_enabled is true, real customer traffic
     # gets a fixed "talk to us at the other number" reply and the LLM is
-    # bypassed entirely. A message starting with "bot" lets the operator
-    # exercise the bot during this period — the "bot" prefix is stripped
-    # and the rest of the pipeline (greeting fast-path, LLM, tools) runs
-    # on whatever follows.
-    if settings.bot_redirect_enabled:
+    # bypassed entirely. Per-phone testing escape hatch: the first message
+    # starting with "bot" sets state["test_mode"] = True and is processed
+    # normally; every subsequent message from that phone bypasses the
+    # redirect for the rest of the conversation (until state TTL expires
+    # at 30 min idle). Requiring "bot" on every single message was the
+    # original behavior — bad UX, fixed 2026-05-21 after testing showed
+    # it was unusable.
+    if settings.bot_redirect_enabled and not state.get("test_mode"):
         m = _BOT_KEYWORD_RE.match(text or "")
         if m:
             stripped = (m.group(1) or "").strip()
             # Plain "bot" with no payload → treat as "oi" so the greeting
             # fast-path can fire and the tester gets an instant response.
             text = stripped or "oi"
+            state["test_mode"] = True
+            # Persist the flag immediately — if the LLM call below errors
+            # out, we still want the next message from this tester to
+            # bypass the redirect.
+            await state_svc.set_state(phone, state)
         else:
             await _persist_message(
                 db, phone=phone, customer_id=customer.id,
