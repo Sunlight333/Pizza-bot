@@ -131,7 +131,19 @@ def _ok(body: Optional[dict]) -> bool:
 # ---------------------------------------------------------------------------
 
 async def geocode(address: str) -> Optional[dict]:
-    """Address → {lat, lng, formatted, place_id, source='google'} or None."""
+    """Address → {lat, lng, formatted, place_id, location_type, source='google'} or None.
+
+    Returns None when:
+      - Google returns no result, or
+      - Google returns only APPROXIMATE results (city/neighborhood centroid).
+        That signal means we don't have a real address — feeding the
+        centroid into Haversine + bands would charge whatever fee the
+        centroid happens to fall in (the bug that produced R$ 7 for
+        bairro-only inputs). Caller should ask the customer for a
+        complete street + number instead of pricing a centroid.
+
+    Accepted location_types: ROOFTOP, RANGE_INTERPOLATED, GEOMETRIC_CENTER.
+    """
     address = (address or "").strip()
     if not address or not _key_available():
         return None
@@ -151,12 +163,24 @@ async def geocode(address: str) -> Optional[dict]:
         await _cached_set(key, None, ttl=CACHE_TTL_MISS)
         return None
     top = results[0]
+    location_type = (
+        (top.get("geometry") or {}).get("location_type") or "APPROXIMATE"
+    )
+    if location_type == "APPROXIMATE":
+        log.info(
+            "google geocode rejected as too imprecise (location_type=APPROXIMATE) "
+            "for address=%r — caller should ask the customer for a real number.",
+            address,
+        )
+        await _cached_set(key, None, ttl=CACHE_TTL_MISS)
+        return None
     loc = top.get("geometry", {}).get("location", {})
     result = {
         "lat": loc.get("lat"),
         "lng": loc.get("lng"),
         "formatted": top.get("formatted_address"),
         "place_id": top.get("place_id"),
+        "location_type": location_type,
         "source": "google",
     }
     await _cached_set(key, result, ttl=CACHE_TTL_HIT)

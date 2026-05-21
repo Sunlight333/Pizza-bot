@@ -156,14 +156,36 @@ async def geocode(
 ) -> Optional[dict]:
     """Geocode an address. Returns {lat, lng, display_name, source} or None.
 
-    Tries the most specific query first; if that fails, retries without
-    the house number (some streets are mapped at the road level only).
-    Caches both hits and misses in Redis.
+    Provider chain: Google Maps (when key set + non-APPROXIMATE) → Nominatim.
+    The Google leg rejects APPROXIMATE results because those are city /
+    neighborhood centroids — feeding them into our Haversine + band
+    lookup produced wrong fees (the bug that quoted R$ 7 for a
+    bairro-only "Eldorado" input). Nominatim is the safety net for
+    rural addresses Google hasn't indexed.
+
+    Both legs cache hits and misses in Redis under separate namespaces.
     """
     primary = _build_query(
         street=street, number=number, neighborhood=neighborhood,
         city=city, cep=cep, free_form=free_form,
     )
+
+    # Try Google first — only meaningful when the key is configured and
+    # the query has enough to resolve to a real street address. The
+    # APPROXIMATE filter inside gmaps.geocode handles imprecise inputs.
+    try:
+        from app.services import google_maps as gmaps
+        g = await gmaps.geocode(primary)
+        if g and g.get("lat") is not None and g.get("lng") is not None:
+            return {
+                "lat": float(g["lat"]),
+                "lng": float(g["lng"]),
+                "display_name": g.get("formatted"),
+                "source": "google",
+            }
+    except Exception:
+        log.exception("google geocode leg failed for %r — falling back", primary)
+
     res = await _nominatim(primary)
     if res:
         return res

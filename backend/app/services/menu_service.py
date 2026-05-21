@@ -2,12 +2,41 @@
 Menu service — pricing + pizza description logic used by both the admin API
 and the bot AI engine.
 """
+import unicodedata
 from typing import List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.product import Product
+
+
+# Operator rule (Pizzaria Planalto, captured 2026-05-21): cebola and
+# requeijão are the only courtesy add-ons — they NEVER add to the total,
+# whether the customer asks for them as "cebola" / "Cebola" / "Extra
+# Cebola" / "com cebola" or any combination. Every other extra in the
+# menu IS billed at its configured per-size price. Normalised by
+# lowercasing + stripping accents + dropping any leading "extra " prefix.
+_COURTESY_EXTRA_NAMES_NORM: set[str] = {"cebola", "requeijao"}
+
+
+def _normalise_extra_name(name: str) -> str:
+    """Lowercase + strip accents + drop optional 'extra ' prefix so the
+    courtesy match works for 'Cebola' / 'cebola' / 'Extra Cebola' /
+    'Requeijão' / 'extra requeijao' uniformly."""
+    if not name:
+        return ""
+    nf = unicodedata.normalize("NFD", name)
+    no_accents = "".join(c for c in nf if unicodedata.category(c) != "Mn")
+    s = no_accents.strip().lower()
+    if s.startswith("extra "):
+        s = s[len("extra "):].strip()
+    return s
+
+
+def is_courtesy_extra(name: str) -> bool:
+    """True when `name` resolves to one of the operator's free add-ons."""
+    return _normalise_extra_name(name) in _COURTESY_EXTRA_NAMES_NORM
 
 
 def _size_price(product: Product, size: str) -> Optional[float]:
@@ -75,12 +104,19 @@ def _option_price_for_size(entry, size: str) -> float:
 def extras_price_total(
     product: Product, chosen: Optional[List[str]], size: str
 ) -> float:
-    """Sum the price of each chosen extra at the given size."""
+    """Sum the price of each chosen extra at the given size.
+
+    Courtesy add-ons (cebola, requeijão) are always free regardless of
+    how the LLM phrases the name in the chosen list — see
+    `_COURTESY_EXTRA_NAMES_NORM`.
+    """
     if not chosen:
         return 0.0
     catalog = {_option_name(e).lower(): e for e in (product.available_extras or [])}
     total = 0.0
     for name in chosen:
+        if is_courtesy_extra(name):
+            continue
         entry = catalog.get(name.lower())
         if entry is None:
             continue
@@ -178,7 +214,10 @@ def build_pizza_description(
     if crust and crust.lower() != "sem borda":
         parts.append(f"Borda {crust}")
     if extras:
-        parts.extend(extras)
+        # Tag courtesy items so the printed receipt + admin chat show
+        # them clearly as free (matches what the bot's resumo says).
+        for e in extras:
+            parts.append(f"{e} (cortesia)" if is_courtesy_extra(e) else e)
     return " ".join(parts)
 
 
@@ -385,5 +424,11 @@ def validate_combination(
     if extras:
         allowed = {_option_name(e).lower() for e in (base.available_extras or [])}
         for e in extras:
+            # Courtesy add-ons (cebola, requeijão) are always allowed —
+            # they may appear as "Cebola", "cebola", or "Extra Cebola"
+            # depending on how the LLM phrases it. extras_price_total
+            # zeroes them out separately.
+            if is_courtesy_extra(e):
+                continue
             if e.lower() not in allowed:
                 raise ValueError(f"Adicional '{e}' indisponível")

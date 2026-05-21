@@ -228,13 +228,36 @@ TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "set_delivery_address",
-            "description": "Registra endereço de entrega. Deve extrair bairro para cálculo de taxa.",
+            "description": (
+                "Registra o endereço completo de entrega DO CLIENTE. "
+                "REGRA DURA: só chame esta função quando o cliente já tiver "
+                "fornecido EXPLICITAMENTE o NOME DA RUA e o NÚMERO DA CASA. "
+                "NUNCA invente um número. NUNCA chute uma rua. NUNCA chame "
+                "esta função com só o bairro — sem rua + número o sistema "
+                "não consegue calcular a taxa real e o pedido sai com fee "
+                "errado. Se o cliente só mandou o bairro, use "
+                "ask_clarification para pedir a rua + número + um ponto de "
+                "referência (algo perto da casa) ANTES de chamar set_delivery_"
+                "address. 'sem número', 's/n' e variações NÃO são números "
+                "válidos — peça o número da casa de novo se o cliente disser "
+                "isso."
+            ),
             "parameters": {
                 "type": "object",
                 "required": ["street", "number", "neighborhood"],
                 "properties": {
-                    "street": {"type": "string"},
-                    "number": {"type": "string"},
+                    "street": {
+                        "type": "string",
+                        "description": "Nome da rua/avenida. Ex: 'Rua das Flores'.",
+                    },
+                    "number": {
+                        "type": "string",
+                        "description": (
+                            "Número da casa, apenas dígitos (com letra opcional "
+                            "tipo '12B'). NUNCA 'sem número', 's/n', 'SN' ou "
+                            "zero. Se o cliente não souber, use ask_clarification."
+                        ),
+                    },
                     "neighborhood": {"type": "string"},
                     "complement": {"type": "string"},
                     "reference": {"type": "string"},
@@ -805,8 +828,28 @@ REGRAS IMPORTANTES:
   grave que já gerou reclamação real (pedido com sabor trocado e cobrança
   duplicada). Se você não achar o sabor exato no cardápio, chame
   ask_clarification em vez de chutar um ID parecido.
-- Ao perguntar endereço, peça rua, número, bairro e referência.
-- Depois do endereço, informe a taxa e o tempo estimado.
+- ENDEREÇO DE ENTREGA — REGRA DURA. Você PRECISA dos 3 dados: NOME DA
+  RUA, NÚMERO DA CASA, BAIRRO (referência é opcional, sempre vale a
+  pena pedir). Se o cliente mandar só o bairro (ex: "Eldorado") OU só
+  o nome da rua sem número OU disser "sem número / s/n", você NÃO
+  chama set_delivery_address — chama ask_clarification e pergunta o
+  que está faltando. Exemplos:
+    Cliente: "É no bairro Eldorado" → você pergunta: "Beleza! Pra
+       calcular certinho, me passa a rua e o número da casa? E se
+       tiver um ponto de referência (algo perto), me conta também 😊"
+    Cliente: "Rua das Flores, sem número" → você pergunta: "Preciso do
+       número da casa pra fazer a entrega chegar certa — qual é?"
+  NUNCA invente uma rua ou um número pra satisfazer o sistema.
+  Chamar set_delivery_address sem rua + número faz o cálculo de taxa
+  sair errado (já aconteceu — bug real que o operador reclamou).
+- Depois que set_delivery_address aceitar o endereço completo, o sistema
+  retorna a taxa real e o tempo estimado — repita pro cliente.
+- ORDEM DAS PERGUNTAS (não inverta): primeiro confirme o(s) item(ns) e
+  adicione ao carrinho, DEPOIS peça o endereço completo (rua + número
+  + bairro + referência), DEPOIS pergunte a forma de pagamento.
+  SÓ pergunte sobre TROCO depois que o cliente já confirmou DINHEIRO.
+  NÃO pergunte "precisa de troco?" antes do cliente escolher dinheiro
+  — isso confunde e o sistema também vai bloquear a chamada.
 - Antes de confirmar, mostre o resumo completo e peça confirmação explícita.
 - Se o cliente xingar, reclamar muito, ou pedir falar com outra pessoa, chame request_human_handoff.
 - Se o bairro não for atendido, avise que não entregamos lá e ofereça retirada.
@@ -1086,7 +1129,46 @@ async def _execute_tool_call(
             return "OK — item removido"
 
         if name == "set_delivery_address":
-            addr = f"{args['street']}, {args['number']}"
+            # Refuse garbage inputs at the boundary. The LLM has been
+            # known to call this tool with placeholder street/number
+            # values (or with just the neighborhood and "sem número")
+            # to satisfy the required-field schema — Google then
+            # geocodes the neighborhood centroid and we charge whatever
+            # band that centroid happens to fall in. Validate every
+            # field aggressively here so the only way through is real
+            # data the customer actually provided.
+            street_raw = (args.get("street") or "").strip()
+            number_raw = (args.get("number") or "").strip()
+            neighborhood_raw = (args.get("neighborhood") or "").strip()
+            if len(street_raw) < 3 or street_raw.lower() in {
+                "sem rua", "n/a", "sem", "nao sei", "não sei",
+            }:
+                return (
+                    "BLOQUEADO: nome da rua ausente ou inválido "
+                    f"('{street_raw}'). Use ask_clarification para "
+                    "pedir o NOME COMPLETO da rua antes de tentar de novo. "
+                    "NÃO invente."
+                )
+            digits = "".join(ch for ch in number_raw if ch.isdigit())
+            if (
+                not number_raw
+                or not digits
+                or digits == "0"
+                or number_raw.lower() in {"sn", "s/n", "s n", "sem numero", "sem número", "n/a"}
+            ):
+                return (
+                    "BLOQUEADO: número da casa ausente ou inválido "
+                    f"('{number_raw}'). Use ask_clarification para "
+                    "pedir o NÚMERO DA CASA antes de tentar de novo. "
+                    "'sem número' / 's/n' não são aceitos — peça o número "
+                    "literal."
+                )
+            if len(neighborhood_raw) < 2:
+                return (
+                    "BLOQUEADO: bairro ausente. Use ask_clarification "
+                    "para pedir o nome do bairro."
+                )
+            addr = f"{street_raw}, {number_raw}"
             if args.get("complement"):
                 addr += f" ({args['complement']})"
             # Route through resolve_delivery_fee — when bot_config has
@@ -1279,6 +1361,28 @@ async def _execute_tool_call(
             )
 
         if name == "set_change_for":
+            # Precondition gate: troco only makes sense when the customer
+            # has already picked cash as payment. The LLM has been calling
+            # this tool before the bill was shown — producing the bizarre
+            # "precisa de troco?" question at the top of the conversation.
+            # Refuse with a corrective instruction instead of silently
+            # accepting.
+            pm = cart.get("payment_method")
+            if pm != "cash":
+                return (
+                    "BLOQUEADO: set_change_for só pode ser chamado depois "
+                    f"que o cliente já escolheu DINHEIRO como pagamento "
+                    f"(atualmente: {pm or 'nenhuma forma definida'}). "
+                    "Volte ao fluxo: monte o pedido, depois pergunte "
+                    "endereço, depois pergunte forma de pagamento. Se o "
+                    "cliente escolher dinheiro, AÍ pergunte sobre troco."
+                )
+            if not cart.get("items"):
+                return (
+                    "BLOQUEADO: set_change_for chamado com o carrinho vazio. "
+                    "Antes de troco, adicione os itens com add_pizza_to_cart "
+                    "e defina o endereço."
+                )
             try:
                 amount = float(args.get("amount") or 0)
             except (TypeError, ValueError):
