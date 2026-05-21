@@ -381,15 +381,17 @@ TOOLS: list[dict[str, Any]] = [
             "name": "send_menu_image",
             "description": (
                 "OBRIGATÓRIO chamar SEMPRE que o cliente sinalizar que quer ver o cardápio, "
-                "menu, sabores, opções, ou as pizzas — em qualquer idioma e qualquer "
-                "fraseado, direto ou indireto. Exemplos de gatilhos: 'manda o cardápio', "
-                "'tem menu?', 'quais sabores?', 'que pizzas vocês têm?', 'vamos começar "
-                "pelo menu', 'show me menu', 'me mostra as opções', 'queria ver as pizzas'. "
-                "Se o cliente não especificar a categoria, use 'salgada' (default). Esta "
-                "função envia a imagem REAL pelo WhatsApp; NUNCA escreva 'vou te mandar o "
-                "cardápio' sem chamar esta função no mesmo turno — o cliente não receberia "
-                "a imagem. Categorias: 'salgada' (pizzas salgadas), 'doce' (pizzas doces), "
-                "'sorvete' (sorvetes), 'bebida' (bebidas)."
+                "menu, sabores, opções, as pizzas, OU as bordas — em qualquer idioma e "
+                "qualquer fraseado, direto ou indireto. Exemplos de gatilhos: 'manda o "
+                "cardápio', 'tem menu?', 'quais sabores?', 'que pizzas vocês têm?', 'vamos "
+                "começar pelo menu', 'show me menu', 'me mostra as opções', 'queria ver "
+                "as pizzas', 'quais bordas vocês têm?', 'tem borda recheada?', 'quanto "
+                "custa a borda?'. Se o cliente não especificar a categoria, use 'salgada' "
+                "(default). Esta função envia a imagem REAL pelo WhatsApp; NUNCA escreva "
+                "'vou te mandar o cardápio' sem chamar esta função no mesmo turno — o "
+                "cliente não receberia a imagem. Categorias: 'salgada' (pizzas salgadas), "
+                "'doce' (pizzas doces), 'sorvete' (sorvetes), 'bebida' (bebidas), "
+                "'borda' (sabores e preços de borda recheada)."
             ),
             "parameters": {
                 "type": "object",
@@ -397,7 +399,7 @@ TOOLS: list[dict[str, Any]] = [
                 "properties": {
                     "category": {
                         "type": "string",
-                        "enum": ["salgada", "doce", "sorvete", "bebida"],
+                        "enum": ["salgada", "doce", "sorvete", "bebida", "borda"],
                         "description": "Categoria do cardápio a enviar",
                     },
                 },
@@ -1030,14 +1032,20 @@ CARDÁPIO COM IMAGEM (REGRA DURA — não falhe nessa):
       qualquer língua — interprete o sentido)
     * Qualquer frase que peça PRA VER as opções, mesmo indireta (ex.: "o que
       vocês têm?", "me mostra os sabores")
+    * BORDAS: "quais bordas vocês têm?", "tem borda recheada?", "qual o sabor
+      da borda?", "quanto custa a borda?", "borda doce também?", "manda os
+      sabores de borda", "tem catupiry/cheddar/chocolate na borda?" —
+      qualquer pergunta SOBRE A BORDA dispara send_menu_image(category="borda").
 
 - COMO ESCOLHER A CATEGORIA:
     * pizza salgada → category="salgada"
     * pizza doce → category="doce"
     * sorvete → category="sorvete"
     * bebida → category="bebida"
-    * Se o cliente não especificar, ASSUMA "salgada" (pizza salgada é o
-      cardápio principal). Não pergunte; chame direto e ofereça os outros depois.
+    * borda recheada / sabores de borda → category="borda"
+    * Se o cliente não especificar (e não é pergunta sobre borda), ASSUMA
+      "salgada" (pizza salgada é o cardápio principal). Não pergunte;
+      chame direto e ofereça os outros depois.
 
 - DEPOIS de chamar send_menu_image com sucesso, mande UMA frase curta no chat:
   "Manda aí, ó 👇" / "Esses são nossos sabores 🍕" / "Tá aí 👆" — NUNCA repita

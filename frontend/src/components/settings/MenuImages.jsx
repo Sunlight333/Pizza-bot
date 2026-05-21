@@ -16,8 +16,8 @@ import PizzaSpinner from '@/components/ui/PizzaSpinner'
  * category; the bot dispatches that image when GPT calls send_menu_image.
  *
  * The list of categories is hardcoded on purpose — the bot's tool enum is
- * also fixed (salgada/doce/sorvete/bebida) so adding a category here without
- * teaching the bot would silently fail. Keep both in sync.
+ * also fixed (salgada/doce/sorvete/bebida/borda) so adding a category here
+ * without teaching the bot would silently fail. Keep both in sync.
  */
 const CATEGORIES = [
   {
@@ -39,6 +39,11 @@ const CATEGORIES = [
     key: 'bebida',
     title: 'Bebidas',
     hint: 'Refrigerantes, sucos, cervejas. Opcional.',
+  },
+  {
+    key: 'borda',
+    title: 'Bordas recheadas',
+    hint: 'Sabores e preços de borda (chocolate, catupiry, cheddar, mussarela, doce de leite, leite ninho). Enviado quando o cliente pergunta quais bordas a pizzaria tem.',
   },
 ]
 
