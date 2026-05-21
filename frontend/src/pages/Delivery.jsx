@@ -14,39 +14,41 @@ import { deliveryApi } from '@/services/delivery'
 const brl = (n) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0)
 
-// Render the km range cell. Empty cells show "—" so the operator can see
-// at a glance which zones are configured as bands and which aren't.
-function KmRangeDisplay({ min, max }) {
-  if (min == null && max == null) {
-    return <span className="text-white/30">—</span>
+// Format a band range as Brazilian comma-decimal label, e.g. "2,1-3 km".
+// Kept in sync with backend.api.routes.delivery._band_label so the auto-
+// generated neighborhood field matches what the seed/import code produces.
+function bandLabel(min, max) {
+  const fmt = (v) => {
+    const n = Number(v)
+    if (Number.isInteger(n)) return String(n)
+    return n.toFixed(1).replace('.', ',')
   }
-  const lo = min == null ? '0' : String(min).replace('.', ',')
-  const hi = max == null ? '∞' : String(max).replace('.', ',')
-  return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white/5 text-xs font-medium tabular-nums">
-      {lo}–{hi} km
-    </span>
-  )
+  return `${fmt(min)}-${fmt(max)} km`
 }
 
 function nullable(n) {
-  // Empty string → null. Number string → Number. Avoids sending NaN.
   if (n === '' || n == null) return null
   const v = Number(n)
   return isNaN(v) ? null : v
 }
 
-function ZoneRow({ zone, onSave, onDelete }) {
+function BandRow({ band, onSave, onDelete }) {
   const [editing, setEditing] = useState(false)
-  const [data, setData] = useState(zone)
+  const [data, setData] = useState(band)
 
   const save = async () => {
-    await onSave(zone.id, {
-      neighborhood: data.neighborhood,
+    const min = nullable(data.distance_min_km)
+    const max = nullable(data.distance_max_km)
+    if (min == null || max == null || max <= min) {
+      toast.error('Distância máxima precisa ser maior que a mínima.')
+      return
+    }
+    await onSave(band.id, {
+      neighborhood: bandLabel(min, max),
       fee: Number(data.fee),
       estimated_minutes: Number(data.estimated_minutes),
-      distance_min_km: nullable(data.distance_min_km),
-      distance_max_km: nullable(data.distance_max_km),
+      distance_min_km: min,
+      distance_max_km: max,
       is_active: data.is_active,
     })
     setEditing(false)
@@ -56,13 +58,30 @@ function ZoneRow({ zone, onSave, onDelete }) {
     <tr className="border-b border-glass-border last:border-0">
       <td className="py-3 px-4">
         {editing ? (
-          <input
-            value={data.neighborhood}
-            onChange={(e) => setData({ ...data, neighborhood: e.target.value })}
-            className="input-field py-1 text-sm"
-          />
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              value={data.distance_min_km ?? ''}
+              onChange={(e) => setData({ ...data, distance_min_km: e.target.value })}
+              className="input-field py-1 text-sm w-20 tabular-nums"
+            />
+            <span className="text-white/30 text-xs">a</span>
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              value={data.distance_max_km ?? ''}
+              onChange={(e) => setData({ ...data, distance_max_km: e.target.value })}
+              className="input-field py-1 text-sm w-20 tabular-nums"
+            />
+            <span className="text-white/40 text-xs">km</span>
+          </div>
         ) : (
-          <span className="font-medium">{zone.neighborhood}</span>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white/5 text-xs font-medium tabular-nums">
+            {bandLabel(band.distance_min_km, band.distance_max_km)}
+          </span>
         )}
       </td>
       <td className="py-3 px-4 text-accent">
@@ -75,7 +94,7 @@ function ZoneRow({ zone, onSave, onDelete }) {
             className="input-field py-1 text-sm w-24"
           />
         ) : (
-          brl(zone.fee)
+          brl(band.fee)
         )}
       </td>
       <td className="py-3 px-4 text-white/70">
@@ -87,53 +106,40 @@ function ZoneRow({ zone, onSave, onDelete }) {
             className="input-field py-1 text-sm w-20"
           />
         ) : (
-          `${zone.estimated_minutes} min`
+          `${band.estimated_minutes} min`
         )}
       </td>
       <td className="py-3 px-4">
         {editing ? (
-          <div className="flex items-center gap-1">
+          <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
             <input
-              type="number"
-              step="0.1"
-              min="0"
-              placeholder="min"
-              value={data.distance_min_km ?? ''}
-              onChange={(e) => setData({ ...data, distance_min_km: e.target.value })}
-              className="input-field py-1 text-sm w-16"
+              type="checkbox"
+              checked={!!data.is_active}
+              onChange={(e) => setData({ ...data, is_active: e.target.checked })}
+              className="w-4 h-4 accent-success"
             />
-            <span className="text-white/30 text-xs">a</span>
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              placeholder="max"
-              value={data.distance_max_km ?? ''}
-              onChange={(e) => setData({ ...data, distance_max_km: e.target.value })}
-              className="input-field py-1 text-sm w-16"
-            />
-            <span className="text-white/40 text-xs">km</span>
-          </div>
+            <span className="text-white/70">{data.is_active ? 'Ativo' : 'Inativo'}</span>
+          </label>
         ) : (
-          <KmRangeDisplay min={zone.distance_min_km} max={zone.distance_max_km} />
+          <span className={`text-xs px-2 py-0.5 rounded-full ${band.is_active ? 'bg-success/20 text-success' : 'bg-white/10 text-white/40'}`}>
+            {band.is_active ? 'Ativo' : 'Inativo'}
+          </span>
         )}
-      </td>
-      <td className="py-3 px-4">
-        <span className={`text-xs px-2 py-0.5 rounded-full ${zone.is_active ? 'bg-success/20 text-success' : 'bg-white/10 text-white/40'}`}>
-          {zone.is_active ? 'Ativo' : 'Inativo'}
-        </span>
       </td>
       <td className="py-3 px-4 text-right space-x-1">
         {editing ? (
           <>
             <button onClick={save} className="p-1.5 text-success hover:bg-success/10 rounded"><Check size={14} /></button>
-            <button onClick={() => { setData(zone); setEditing(false) }} className="p-1.5 text-white/50 hover:bg-white/10 rounded"><X size={14} /></button>
+            <button onClick={() => { setData(band); setEditing(false) }} className="p-1.5 text-white/50 hover:bg-white/10 rounded"><X size={14} /></button>
           </>
         ) : (
           <>
             <button onClick={() => setEditing(true)} className="p-1.5 text-white/60 hover:bg-white/10 rounded"><Edit2 size={14} /></button>
             <button
-              onClick={() => { if (confirm(`Remover "${zone.neighborhood}"?`)) onDelete(zone.id) }}
+              onClick={() => {
+                const label = bandLabel(band.distance_min_km, band.distance_max_km)
+                if (confirm(`Remover faixa "${label}"?`)) onDelete(band.id)
+              }}
               className="p-1.5 text-white/60 hover:text-red-400 hover:bg-red-400/10 rounded"
             >
               <Trash2 size={14} />
@@ -148,16 +154,22 @@ function ZoneRow({ zone, onSave, onDelete }) {
 export default function Delivery() {
   const qc = useQueryClient()
   const [adding, setAdding] = useState(false)
-  const [newZone, setNewZone] = useState({
-    neighborhood: '', fee: 0, estimated_minutes: 45,
-    distance_min_km: '', distance_max_km: '',
+  const [newBand, setNewBand] = useState({
+    distance_min_km: '', distance_max_km: '', fee: 0, estimated_minutes: 45,
     is_active: true,
   })
 
-  const { data: zones = [], isLoading } = useQuery({
+  const { data: allZones = [], isLoading } = useQuery({
     queryKey: ['zones'],
     queryFn: deliveryApi.list,
   })
+
+  // Only show rows that actually have a distance window — the page is
+  // now purely about distance-based delivery. Legacy named-only zones
+  // (if any predate the migration) stay in the DB but are hidden here.
+  const bands = allZones
+    .filter((z) => z.distance_min_km != null && z.distance_max_km != null)
+    .sort((a, b) => Number(a.distance_min_km) - Number(b.distance_min_km))
 
   const saveMut = useMutation({
     mutationFn: ({ id, data }) => deliveryApi.update(id, data),
@@ -169,12 +181,11 @@ export default function Delivery() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['zones'] })
       setAdding(false)
-      setNewZone({
-        neighborhood: '', fee: 0, estimated_minutes: 45,
-        distance_min_km: '', distance_max_km: '',
+      setNewBand({
+        distance_min_km: '', distance_max_km: '', fee: 0, estimated_minutes: 45,
         is_active: true,
       })
-      toast.success('Bairro adicionado')
+      toast.success('Faixa adicionada')
     },
     onError: (e) => toast.error(e.response?.data?.detail || 'Erro ao criar'),
   })
@@ -197,16 +208,33 @@ export default function Delivery() {
     },
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['zones'] })
-      toast.success(`${r.inserted} criados, ${r.updated} atualizados`)
+      toast.success(`${r.inserted} criadas, ${r.updated} atualizadas`)
     },
     onError: (e) => toast.error(e.response?.data?.detail || 'Erro ao importar'),
   })
 
   const stats = {
-    total: zones.length,
-    avg: zones.length ? zones.reduce((s, z) => s + Number(z.fee), 0) / zones.length : 0,
-    min: zones.length ? Math.min(...zones.map((z) => Number(z.fee))) : 0,
-    max: zones.length ? Math.max(...zones.map((z) => Number(z.fee))) : 0,
+    total: bands.length,
+    avg: bands.length ? bands.reduce((s, z) => s + Number(z.fee), 0) / bands.length : 0,
+    min: bands.length ? Math.min(...bands.map((z) => Number(z.fee))) : 0,
+    max: bands.length ? Math.max(...bands.map((z) => Number(z.fee))) : 0,
+  }
+
+  const createBand = () => {
+    const min = nullable(newBand.distance_min_km)
+    const max = nullable(newBand.distance_max_km)
+    if (min == null || max == null || max <= min) {
+      toast.error('Distância máxima precisa ser maior que a mínima.')
+      return
+    }
+    createMut.mutate({
+      neighborhood: bandLabel(min, max),
+      fee: Number(newBand.fee),
+      estimated_minutes: Number(newBand.estimated_minutes),
+      distance_min_km: min,
+      distance_max_km: max,
+      is_active: newBand.is_active,
+    })
   }
 
   return (
@@ -215,7 +243,7 @@ export default function Delivery() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="glass-card p-4">
-          <div className="text-xs text-white/50 uppercase">Bairros</div>
+          <div className="text-xs text-white/50 uppercase">Faixas</div>
           <div className="text-2xl font-display mt-1"><CountUp value={stats.total} /></div>
         </div>
         <div className="glass-card p-4">
@@ -239,13 +267,13 @@ export default function Delivery() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <DeliveryZoneMap zones={zones} />
+        <DeliveryZoneMap zones={bands} />
         <div className="glass-card p-4 flex flex-col items-center justify-center text-center">
           <Upload size={32} className="text-white/30 mb-2" />
           <h3 className="font-display mb-2">Importar CSV</h3>
           <p className="text-xs text-white/50 mb-4 max-w-xs">
-            CSV com colunas: <code>neighborhood,fee,estimated_minutes</code>.
-            Bairros existentes são atualizados.
+            CSV com colunas: <code>distance_min_km,distance_max_km,fee,estimated_minutes</code>.
+            Faixas com a mesma janela (min, max) são atualizadas; novas são criadas.
           </p>
           <input
             ref={fileInputRef}
@@ -266,7 +294,7 @@ export default function Delivery() {
 
       <div className="glass-card">
         <div className="flex items-center justify-between p-4 border-b border-glass-border">
-          <h2 className="font-display flex items-center gap-2"><Truck size={18} /> Bairros Atendidos</h2>
+          <h2 className="font-display flex items-center gap-2"><Truck size={18} /> Faixas de Entrega por Distância</h2>
           <button onClick={() => setAdding(true)} className="btn-primary text-sm flex items-center gap-2">
             <Plus size={14} /> Adicionar
           </button>
@@ -275,10 +303,9 @@ export default function Delivery() {
         <table className="w-full text-left">
           <thead>
             <tr className="text-xs uppercase text-white/40 border-b border-glass-border">
-              <th className="px-4 py-2 font-medium">Bairro</th>
+              <th className="px-4 py-2 font-medium">Distância (km)</th>
               <th className="px-4 py-2 font-medium">Taxa</th>
               <th className="px-4 py-2 font-medium">Tempo</th>
-              <th className="px-4 py-2 font-medium">Distância (km)</th>
               <th className="px-4 py-2 font-medium">Status</th>
               <th className="px-4 py-2" />
             </tr>
@@ -291,41 +318,16 @@ export default function Delivery() {
                 className="border-b border-glass-border bg-primary/5"
               >
                 <td className="py-3 px-4">
-                  <input
-                    autoFocus
-                    placeholder="Bairro"
-                    value={newZone.neighborhood}
-                    onChange={(e) => setNewZone({ ...newZone, neighborhood: e.target.value })}
-                    className="input-field py-1 text-sm"
-                  />
-                </td>
-                <td className="py-3 px-4">
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={newZone.fee}
-                    onChange={(e) => setNewZone({ ...newZone, fee: e.target.value })}
-                    className="input-field py-1 text-sm w-24"
-                  />
-                </td>
-                <td className="py-3 px-4">
-                  <input
-                    type="number"
-                    value={newZone.estimated_minutes}
-                    onChange={(e) => setNewZone({ ...newZone, estimated_minutes: e.target.value })}
-                    className="input-field py-1 text-sm w-20"
-                  />
-                </td>
-                <td className="py-3 px-4">
                   <div className="flex items-center gap-1">
                     <input
+                      autoFocus
                       type="number"
                       step="0.1"
                       min="0"
                       placeholder="min"
-                      value={newZone.distance_min_km}
-                      onChange={(e) => setNewZone({ ...newZone, distance_min_km: e.target.value })}
-                      className="input-field py-1 text-sm w-16"
+                      value={newBand.distance_min_km}
+                      onChange={(e) => setNewBand({ ...newBand, distance_min_km: e.target.value })}
+                      className="input-field py-1 text-sm w-20 tabular-nums"
                     />
                     <span className="text-white/30 text-xs">a</span>
                     <input
@@ -333,25 +335,44 @@ export default function Delivery() {
                       step="0.1"
                       min="0"
                       placeholder="max"
-                      value={newZone.distance_max_km}
-                      onChange={(e) => setNewZone({ ...newZone, distance_max_km: e.target.value })}
-                      className="input-field py-1 text-sm w-16"
+                      value={newBand.distance_max_km}
+                      onChange={(e) => setNewBand({ ...newBand, distance_max_km: e.target.value })}
+                      className="input-field py-1 text-sm w-20 tabular-nums"
                     />
                     <span className="text-white/40 text-xs">km</span>
                   </div>
                 </td>
-                <td className="py-3 px-4" />
+                <td className="py-3 px-4">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={newBand.fee}
+                    onChange={(e) => setNewBand({ ...newBand, fee: e.target.value })}
+                    className="input-field py-1 text-sm w-24"
+                  />
+                </td>
+                <td className="py-3 px-4">
+                  <input
+                    type="number"
+                    value={newBand.estimated_minutes}
+                    onChange={(e) => setNewBand({ ...newBand, estimated_minutes: e.target.value })}
+                    className="input-field py-1 text-sm w-20"
+                  />
+                </td>
+                <td className="py-3 px-4">
+                  <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!newBand.is_active}
+                      onChange={(e) => setNewBand({ ...newBand, is_active: e.target.checked })}
+                      className="w-4 h-4 accent-success"
+                    />
+                    <span className="text-white/70">{newBand.is_active ? 'Ativo' : 'Inativo'}</span>
+                  </label>
+                </td>
                 <td className="py-3 px-4 text-right space-x-1">
                   <button
-                    onClick={() =>
-                      createMut.mutate({
-                        ...newZone,
-                        fee: Number(newZone.fee),
-                        estimated_minutes: Number(newZone.estimated_minutes),
-                        distance_min_km: nullable(newZone.distance_min_km),
-                        distance_max_km: nullable(newZone.distance_max_km),
-                      })
-                    }
+                    onClick={createBand}
                     className="p-1.5 text-success hover:bg-success/10 rounded"
                   >
                     <Check size={14} />
@@ -363,14 +384,14 @@ export default function Delivery() {
               </motion.tr>
             )}
             {isLoading ? (
-              <tr><td colSpan={6} className="p-6 text-center text-white/50">Carregando...</td></tr>
-            ) : zones.length === 0 && !adding ? (
-              <tr><td colSpan={6} className="p-6 text-center text-white/50">Nenhum bairro cadastrado</td></tr>
+              <tr><td colSpan={5} className="p-6 text-center text-white/50">Carregando...</td></tr>
+            ) : bands.length === 0 && !adding ? (
+              <tr><td colSpan={5} className="p-6 text-center text-white/50">Nenhuma faixa cadastrada</td></tr>
             ) : (
-              zones.map((z) => (
-                <ZoneRow
+              bands.map((z) => (
+                <BandRow
                   key={z.id}
-                  zone={z}
+                  band={z}
                   onSave={(id, data) => saveMut.mutateAsync({ id, data })}
                   onDelete={deleteMut.mutate}
                 />

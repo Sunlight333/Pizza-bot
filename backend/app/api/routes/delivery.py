@@ -61,18 +61,33 @@ async def delete_zone(zone_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
 
 
+def _band_label(min_km: float, max_km: float) -> str:
+    """Format a distance band as the admin-facing label, e.g. '2,1-3 km'."""
+    def fmt(v: float) -> str:
+        return str(int(v)) if v == int(v) else ("%.1f" % v).replace(".", ",")
+    return f"{fmt(min_km)}-{fmt(max_km)} km"
+
+
 @router.post("/zones/import")
 async def bulk_import_zones(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    CSV import — header row required: neighborhood,fee,estimated_minutes
-    Existing neighborhoods are updated (case-insensitive); new ones inserted.
+    CSV import for distance-band delivery fees.
+
+    Header row required:
+        distance_min_km,distance_max_km,fee,estimated_minutes
+
+    Bands whose [min, max] window already exists are updated in place
+    (fee + estimated_minutes refreshed); bands new to the table are
+    inserted with a synthesised neighborhood label like "2,1-3 km".
+    Matches by (min, max) pair rather than by name so the operator
+    can keep renaming free without losing referential identity.
     """
     content = (await file.read()).decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(content))
-    required = {"neighborhood", "fee", "estimated_minutes"}
+    required = {"distance_min_km", "distance_max_km", "fee", "estimated_minutes"}
     if not required.issubset(set(reader.fieldnames or [])):
         raise HTTPException(
             400, f"CSV must include columns: {', '.join(sorted(required))}"
@@ -82,26 +97,40 @@ async def bulk_import_zones(
     updated = 0
     errors: list[str] = []
 
-    existing = {
-        z.neighborhood.lower(): z
-        for z in (await db.execute(select(DeliveryZone))).scalars().all()
-    }
+    existing_rows = (await db.execute(select(DeliveryZone))).scalars().all()
+    by_band: dict[tuple[float, float], DeliveryZone] = {}
+    for z in existing_rows:
+        if z.distance_min_km is not None and z.distance_max_km is not None:
+            by_band[(float(z.distance_min_km), float(z.distance_max_km))] = z
 
     for row_idx, row in enumerate(reader, 2):
         try:
-            name = (row["neighborhood"] or "").strip()
-            if not name:
+            raw_min = (row["distance_min_km"] or "").strip().replace(",", ".")
+            raw_max = (row["distance_max_km"] or "").strip().replace(",", ".")
+            if not raw_min or not raw_max:
+                continue
+            min_km = float(raw_min)
+            max_km = float(raw_max)
+            if max_km <= min_km:
+                errors.append(f"row {row_idx}: max ({max_km}) must be > min ({min_km})")
                 continue
             fee = float((row["fee"] or "0").replace(",", "."))
             mins = int(row["estimated_minutes"] or 45)
-            existing_zone = existing.get(name.lower())
+            existing_zone = by_band.get((min_km, max_km))
             if existing_zone:
                 existing_zone.fee = fee
                 existing_zone.estimated_minutes = mins
                 existing_zone.is_active = True
                 updated += 1
             else:
-                db.add(DeliveryZone(neighborhood=name, fee=fee, estimated_minutes=mins, is_active=True))
+                db.add(DeliveryZone(
+                    neighborhood=_band_label(min_km, max_km),
+                    fee=fee,
+                    estimated_minutes=mins,
+                    is_active=True,
+                    distance_min_km=min_km,
+                    distance_max_km=max_km,
+                ))
                 inserted += 1
         except Exception as e:
             errors.append(f"row {row_idx}: {e}")

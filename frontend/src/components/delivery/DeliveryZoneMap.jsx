@@ -29,14 +29,14 @@ export default function DeliveryZoneMap({ zones = [] }) {
   if (!sorted.length) {
     return (
       <div className="glass-card p-6 text-white/40 text-center text-sm">
-        Sem bairros ativos para mostrar
+        Sem faixas ativas para mostrar
       </div>
     )
   }
 
   return (
     <div className="glass-card p-5 relative">
-      <h3 className="font-display mb-3">Mapa de bairros (taxa por proximidade)</h3>
+      <h3 className="font-display mb-3">Mapa de faixas (taxa por distância)</h3>
 
       <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="w-full max-w-[400px] mx-auto block">
         <defs>
