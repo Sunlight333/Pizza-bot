@@ -122,13 +122,26 @@ export default function DistanceDeliveryConfig() {
 
   return (
     <div className="glass-card p-5">
-      {/* Two-column section. Left = the entire form (more dense, taller
-          on small screens). Right = the live map (square, fills its
-          column). Collapses to single column under lg so mid-size
-          screens still get a sensible vertical stack. */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,520px)] gap-5 items-start">
-        {/* LEFT — title, description, address, coords, mode, max radius */}
-        <div className="space-y-4 min-w-0">
+      {/* Two equal columns. Map on the left (square, fills its half),
+          form on the right. 1:1 ratio = the map gets as much horizontal
+          real estate as every form field combined, which on a 1300px+
+          admin viewport gives a ~600px square — operator can read every
+          street label without zooming. Collapses to single column under
+          lg so mid-size screens still get a sensible vertical stack. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+        {/* LEFT — live map (square, fills the column). Sticky so it
+            stays in view as the operator scrolls/edits the form on
+            the right. */}
+        <div className="lg:sticky lg:top-4 self-start w-full order-1">
+          <DeliveryZoneMapLive
+            lat={lat === '' ? null : Number(lat)}
+            lng={lng === '' ? null : Number(lng)}
+            onMove={moveMarker}
+          />
+        </div>
+
+        {/* RIGHT — title, description, address, coords, mode, max radius */}
+        <div className="space-y-4 min-w-0 order-2">
           <div className="flex items-start gap-3">
             <div
               className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
@@ -267,16 +280,6 @@ export default function DistanceDeliveryConfig() {
           </label>
         </div>
 
-        {/* RIGHT — live map. Sticky-ish: stays at the top of its column
-            while the form on the left grows, so the operator always
-            sees the bands as they tweak max-km or coords. */}
-        <div className="lg:sticky lg:top-4 self-start w-full">
-          <DeliveryZoneMapLive
-            lat={lat === '' ? null : Number(lat)}
-            lng={lng === '' ? null : Number(lng)}
-            onMove={moveMarker}
-          />
-        </div>
       </div>
 
       <div className="flex items-center justify-between mt-5 pt-3 border-t border-white/5">
