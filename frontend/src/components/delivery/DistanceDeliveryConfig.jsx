@@ -121,12 +121,17 @@ export default function DistanceDeliveryConfig() {
   }
 
   return (
-    <div className="glass-card p-5 space-y-4">
+    <div className="glass-card p-5 space-y-5">
+      {/* Square live map, centered at the top of the section. Its own
+          component clamps width to 420px so it never dominates the form. */}
       <DeliveryZoneMapLive
         lat={lat === '' ? null : Number(lat)}
         lng={lng === '' ? null : Number(lng)}
         onMove={moveMarker}
       />
+
+      {/* Title + description spans full width so the explanatory copy
+          isn't squeezed into a narrow column on desktop. */}
       <div className="flex items-start gap-3">
         <div
           className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
@@ -151,120 +156,129 @@ export default function DistanceDeliveryConfig() {
         </div>
       </div>
 
-      <div className="space-y-3">
-        <label className="block">
-          <span className="text-[11px] text-white/50 uppercase tracking-wider">
-            Endereço da pizzaria
-          </span>
-          <div className="flex gap-2 mt-1">
-            <input
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Ex: Av. Antônio Antunes Júnior, 6671, Jd Planalto, São José do Rio Preto"
-              className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/10 text-sm focus:outline-none focus:border-primary"
-              disabled={isLoading}
-            />
-            <button
-              onClick={lookupCoords}
-              disabled={geocoding || !address.trim()}
-              className="px-3 h-10 rounded-xl bg-white/10 hover:bg-white/15 disabled:opacity-50 text-sm font-medium flex items-center gap-1.5"
-              title="Buscar coordenadas no OpenStreetMap"
-            >
-              {geocoding ? <Loader2 size={14} className="animate-spin" /> : <MapPin size={14} />}
-              Buscar coordenadas
-            </button>
-          </div>
-        </label>
+      {/* Two-column form. Left = "where the pizzeria is" (address +
+          coords). Right = "how we use it" (mode toggle + max radius).
+          Collapses to a single column under md so mobile stays usable. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+        {/* LEFT — location */}
+        <div className="space-y-3">
+          <label className="block">
+            <span className="text-[11px] text-white/50 uppercase tracking-wider">
+              Endereço da pizzaria
+            </span>
+            <div className="flex gap-2 mt-1">
+              <input
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Ex: Av. Antônio Antunes Júnior, 6671, Jd Planalto, São José do Rio Preto"
+                className="flex-1 min-w-0 h-10 px-3 rounded-xl bg-white/5 border border-white/10 text-sm focus:outline-none focus:border-primary"
+                disabled={isLoading}
+              />
+              <button
+                onClick={lookupCoords}
+                disabled={geocoding || !address.trim()}
+                className="shrink-0 px-3 h-10 rounded-xl bg-white/10 hover:bg-white/15 disabled:opacity-50 text-sm font-medium flex items-center gap-1.5"
+                title="Buscar coordenadas no OpenStreetMap"
+              >
+                {geocoding ? <Loader2 size={14} className="animate-spin" /> : <MapPin size={14} />}
+                Buscar
+              </button>
+            </div>
+          </label>
 
-        <div className="grid grid-cols-2 gap-2">
-          <label className="block">
-            <span className="text-[11px] text-white/50 uppercase tracking-wider">Latitude</span>
-            <input
-              type="number"
-              step="0.0000001"
-              value={lat}
-              onChange={(e) => setLat(e.target.value)}
-              placeholder="-20.7671126"
-              className="mt-1 w-full h-10 px-3 rounded-xl bg-white/5 border border-white/10 text-sm focus:outline-none focus:border-primary"
-            />
-          </label>
-          <label className="block">
-            <span className="text-[11px] text-white/50 uppercase tracking-wider">Longitude</span>
-            <input
-              type="number"
-              step="0.0000001"
-              value={lng}
-              onChange={(e) => setLng(e.target.value)}
-              placeholder="-49.3847098"
-              className="mt-1 w-full h-10 px-3 rounded-xl bg-white/5 border border-white/10 text-sm focus:outline-none focus:border-primary"
-            />
-          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="text-[11px] text-white/50 uppercase tracking-wider">Latitude</span>
+              <input
+                type="number"
+                step="0.0000001"
+                value={lat}
+                onChange={(e) => setLat(e.target.value)}
+                placeholder="-20.7671126"
+                className="mt-1 w-full h-10 px-3 rounded-xl bg-white/5 border border-white/10 text-sm focus:outline-none focus:border-primary"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] text-white/50 uppercase tracking-wider">Longitude</span>
+              <input
+                type="number"
+                step="0.0000001"
+                value={lng}
+                onChange={(e) => setLng(e.target.value)}
+                placeholder="-49.3847098"
+                className="mt-1 w-full h-10 px-3 rounded-xl bg-white/5 border border-white/10 text-sm focus:outline-none focus:border-primary"
+              />
+            </label>
+          </div>
+
+          {resolved && (
+            <div className="text-[11px] text-white/50 flex items-start gap-1.5">
+              <Check size={12} className="text-success mt-0.5 shrink-0" />
+              <span><strong className="text-white/70">Match:</strong> {resolved}</span>
+            </div>
+          )}
         </div>
 
-        {resolved && (
-          <div className="text-[11px] text-white/50 flex items-start gap-1.5">
-            <Check size={12} className="text-success mt-0.5 shrink-0" />
-            <span><strong className="text-white/70">Match:</strong> {resolved}</span>
-          </div>
-        )}
-
-        <label
-          className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors
-            ${enabled ? 'border-success/40 bg-success/5' : 'border-white/10 bg-white/5'}`}
-        >
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            className="mt-0.5 w-5 h-5 accent-success"
-            disabled={!coordsSet}
-          />
-          <div>
-            <p className="font-semibold">Usar cálculo por distância (km)</p>
-            <p className="text-xs text-white/60 mt-0.5">
-              {coordsSet ? (
-                <>
-                  Bot e site vão geocodificar o endereço do cliente e usar a
-                  faixa de km correta. Bairros não cadastrados ainda podem
-                  ser entregues, desde que caiam dentro de alguma faixa.
-                </>
-              ) : (
-                <>
-                  Defina latitude e longitude da pizzaria antes de ligar.
-                </>
-              )}
-            </p>
-          </div>
-        </label>
-
-        <label className="block">
-          <span className="text-[11px] text-white/50 uppercase tracking-wider">
-            Distância máxima de entrega (km)
-          </span>
-          <div className="flex gap-2 mt-1 items-center">
+        {/* RIGHT — usage rules */}
+        <div className="space-y-3">
+          <label
+            className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors
+              ${enabled ? 'border-success/40 bg-success/5' : 'border-white/10 bg-white/5'}`}
+          >
             <input
-              type="number"
-              step="0.1"
-              min="0"
-              value={maxKm}
-              onChange={(e) => setMaxKm(e.target.value)}
-              placeholder="Ex: 8"
-              className="w-32 h-10 px-3 rounded-xl bg-white/5 border border-white/10 text-sm focus:outline-none focus:border-primary"
-              disabled={!enabled}
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+              className="mt-0.5 w-5 h-5 accent-success"
+              disabled={!coordsSet}
             />
-            <span className="text-xs text-white/60">
-              {enabled ? (
-                maxKm === '' || maxKm === null || maxKm === undefined ? (
-                  <>Vazio = sem limite (cliente só é recusado se nenhuma faixa cobrir a distância dele).</>
+            <div>
+              <p className="font-semibold">Usar cálculo por distância (km)</p>
+              <p className="text-xs text-white/60 mt-0.5">
+                {coordsSet ? (
+                  <>
+                    Bot e site vão geocodificar o endereço do cliente e usar a
+                    faixa de km correta. Bairros não cadastrados ainda podem
+                    ser entregues, desde que caiam dentro de alguma faixa.
+                  </>
                 ) : (
-                  <>Endereços acima de <strong>{maxKm} km</strong> são recusados antes mesmo de buscar faixa.</>
-                )
-              ) : (
-                <>Ative o cálculo por distância (acima) para usar o limite.</>
-              )}
+                  <>
+                    Defina latitude e longitude da pizzaria antes de ligar.
+                  </>
+                )}
+              </p>
+            </div>
+          </label>
+
+          <label className="block">
+            <span className="text-[11px] text-white/50 uppercase tracking-wider">
+              Distância máxima de entrega (km)
             </span>
-          </div>
-        </label>
+            <div className="flex gap-2 mt-1 items-center">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={maxKm}
+                onChange={(e) => setMaxKm(e.target.value)}
+                placeholder="Ex: 8"
+                className="shrink-0 w-24 h-10 px-3 rounded-xl bg-white/5 border border-white/10 text-sm focus:outline-none focus:border-primary"
+                disabled={!enabled}
+              />
+              <span className="text-xs text-white/60 flex-1 min-w-0">
+                {enabled ? (
+                  maxKm === '' || maxKm === null || maxKm === undefined ? (
+                    <>Vazio = sem limite (cliente só é recusado se nenhuma faixa cobrir a distância dele).</>
+                  ) : (
+                    <>Endereços acima de <strong>{maxKm} km</strong> são recusados antes de buscar faixa.</>
+                  )
+                ) : (
+                  <>Ative o cálculo por distância para usar o limite.</>
+                )}
+              </span>
+            </div>
+          </label>
+        </div>
       </div>
 
       <div className="flex items-center justify-between pt-2 border-t border-white/5">
