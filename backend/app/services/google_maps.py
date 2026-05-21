@@ -130,6 +130,58 @@ def _ok(body: Optional[dict]) -> bool:
 # Public API
 # ---------------------------------------------------------------------------
 
+async def _pizzaria_locality_hint() -> Optional[str]:
+    """Return "City, ST" of the pizzaria (e.g. "São José do Rio Preto, SP")
+    by reverse-geocoding the saved pizzaria_lat/lng. Cached in Redis for
+    7 days — the pizzaria does not move.
+
+    Used to augment forward-geocode queries so Google doesn't disambiguate
+    a bairro-only input to a faraway city. Without this hint,
+    "R. X, 43 - Boa Vista" picks up "Boa Vista, State of Roraima"
+    ahead of the actual rooftop in São José do Rio Preto.
+    """
+    cache_k = _cache_key("locality_hint", "v1")
+    found, cached = await _cached_get(cache_k)
+    if found:
+        return cached
+
+    try:
+        from app.database import AsyncSessionLocal
+        from app.models.bot_config import BotConfig
+        from sqlalchemy import select
+        async with AsyncSessionLocal() as db:
+            cfg = (
+                await db.execute(select(BotConfig).where(BotConfig.id == 1))
+            ).scalar_one_or_none()
+        if not cfg or cfg.pizzaria_lat is None or cfg.pizzaria_lng is None:
+            await _cached_set(cache_k, None, ttl=CACHE_TTL_MISS)
+            return None
+        rev = await reverse_geocode(float(cfg.pizzaria_lat), float(cfg.pizzaria_lng))
+    except Exception:
+        log.exception("locality hint lookup failed")
+        await _cached_set(cache_k, None, ttl=CACHE_TTL_MISS)
+        return None
+
+    if not rev:
+        await _cached_set(cache_k, None, ttl=CACHE_TTL_MISS)
+        return None
+
+    city = (rev.get("components") or {}).get("city")
+    state = None
+    # Extract two-letter UF from the formatted address ("... - SP, ...").
+    import re
+    m = re.search(r" - ([A-Z]{2})(?=[,]| - |$)", rev.get("formatted") or "")
+    if m:
+        state = m.group(1)
+    if not city:
+        await _cached_set(cache_k, None, ttl=CACHE_TTL_MISS)
+        return None
+    hint = f"{city}, {state}" if state else city
+    # Long TTL — the pizzaria address only changes on operator action.
+    await _cached_set(cache_k, hint, ttl=CACHE_TTL_HIT)
+    return hint
+
+
 async def geocode(address: str) -> Optional[dict]:
     """Address → {lat, lng, formatted, place_id, location_type, source='google'} or None.
 
@@ -142,18 +194,29 @@ async def geocode(address: str) -> Optional[dict]:
         bairro-only inputs). Caller should ask the customer for a
         complete street + number instead of pricing a centroid.
 
+    The query is silently augmented with the pizzaria's city/state when
+    the caller didn't include them, so the right local match wins over
+    an out-of-state same-name neighborhood.
+
     Accepted location_types: ROOFTOP, RANGE_INTERPOLATED, GEOMETRIC_CENTER.
     """
     address = (address or "").strip()
     if not address or not _key_available():
         return None
 
-    key = _cache_key("geo", address.lower())
+    # Augment with pizzaria city/state if not already present. The hint
+    # lookup self-caches; this adds ~0ms after the first cold call.
+    hint = await _pizzaria_locality_hint()
+    full_address = address
+    if hint and hint.split(",")[0].strip().lower() not in address.lower():
+        full_address = f"{address}, {hint}"
+
+    key = _cache_key("geo", full_address.lower())
     found, cached = await _cached_get(key)
     if found:
         return cached  # may be None (cached miss)
 
-    body = await _graph_get(GEOCODE_URL, {"address": address, "region": "br"})
+    body = await _graph_get(GEOCODE_URL, {"address": full_address, "region": "br"})
     if not _ok(body):
         await _cached_set(key, None, ttl=CACHE_TTL_MISS)
         return None
@@ -162,18 +225,31 @@ async def geocode(address: str) -> Optional[dict]:
     if not results:
         await _cached_set(key, None, ttl=CACHE_TTL_MISS)
         return None
-    top = results[0]
-    location_type = (
-        (top.get("geometry") or {}).get("location_type") or "APPROXIMATE"
-    )
-    if location_type == "APPROXIMATE":
+
+    # Pick the first non-APPROXIMATE result rather than blindly taking
+    # results[0]. Without enough context (e.g. no city in the query),
+    # Google sometimes ranks an unrelated city centroid above the actual
+    # rooftop match — happened with "R. Luiz Antônio da Silveira, 43 -
+    # Boa Vista" where the first hit was "Boa Vista, Roraima" (APPROXIMATE)
+    # and the second was the real São José do Rio Preto address (ROOFTOP).
+    # Only return None when *every* result is APPROXIMATE — that's the
+    # actual "we don't know the address" case.
+    chosen = None
+    for r in results:
+        loc_type = (r.get("geometry") or {}).get("location_type") or "APPROXIMATE"
+        if loc_type != "APPROXIMATE":
+            chosen = (r, loc_type)
+            break
+    if chosen is None:
         log.info(
-            "google geocode rejected as too imprecise (location_type=APPROXIMATE) "
-            "for address=%r — caller should ask the customer for a real number.",
-            address,
+            "google geocode: all %d results APPROXIMATE for address=%r — "
+            "returning None so caller asks the customer for a real number.",
+            len(results), address,
         )
         await _cached_set(key, None, ttl=CACHE_TTL_MISS)
         return None
+
+    top, location_type = chosen
     loc = top.get("geometry", {}).get("location", {})
     result = {
         "lat": loc.get("lat"),
