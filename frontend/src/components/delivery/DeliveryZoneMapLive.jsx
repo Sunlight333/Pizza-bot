@@ -155,9 +155,25 @@ export default function DeliveryZoneMapLive({ lat, lng, onMove }) {
     })
   }, [ready, recent])
 
+  // Single width constraint shared by the map and every fallback state
+  // so the page layout doesn't jump when the component swaps between
+  // them (e.g. while bot-config is still loading and lat/lng is null).
+  // 420px hits a sweet spot: big enough to read São José do Rio Preto
+  // street labels comfortably, small enough to leave room for the form
+  // beside or below it on standard 1366+ desktops.
+  const FRAME = {
+    maxWidth: 420,
+    width: '100%',
+    marginLeft: 'auto',
+    marginRight: 'auto',
+  }
+
   if (!available) {
     return (
-      <div className="glass-card p-4 text-sm text-white/50 flex items-center gap-2">
+      <div
+        className="glass-card p-4 text-sm text-white/50 flex items-center gap-2"
+        style={FRAME}
+      >
         <MapIcon size={16} />
         Configure <code className="text-white/70">VITE_GOOGLE_MAPS_KEY</code> para
         habilitar o mapa visual.
@@ -167,7 +183,10 @@ export default function DeliveryZoneMapLive({ lat, lng, onMove }) {
 
   if (lat == null || lng == null) {
     return (
-      <div className="glass-card p-4 text-sm text-white/50 flex items-center gap-2">
+      <div
+        className="glass-card p-4 text-sm text-white/50 flex items-center gap-2"
+        style={FRAME}
+      >
         <MapIcon size={16} />
         Defina as coordenadas da pizzaria abaixo para visualizar no mapa.
       </div>
@@ -175,19 +194,19 @@ export default function DeliveryZoneMapLive({ lat, lng, onMove }) {
   }
 
   return (
-    <div className="glass-card p-1.5 overflow-hidden">
-      {/* Aspect ratio tuned for a comfortable landscape rectangle (~2.4:1)
-          on any viewport width — narrower than a hero image, taller than
-          a banner, enough vertical space to see the outermost band but
-          not so tall it dominates the form below. */}
+    <div className="glass-card p-1.5 overflow-hidden" style={FRAME}>
+      {/* Square (1:1) tile — every delivery band radiates symmetrically
+          from the centre pin, so a square frames them naturally without
+          wasted whitespace. Bounded by FRAME.maxWidth (420) so it never
+          dominates the form below it on wide displays. */}
       <div
         ref={containerRef}
         className="w-full rounded-lg"
-        style={{ aspectRatio: '2.4 / 1', maxHeight: 360, minHeight: 220 }}
+        style={{ aspectRatio: '1 / 1' }}
       />
-      <div className="px-2 py-1.5 text-[11px] text-white/50 flex items-center gap-3">
+      <div className="px-2 py-1.5 text-[11px] text-white/50 flex items-center justify-between gap-2">
         <span>Arraste o pin para reposicionar.</span>
-        <span>Pontos amarelos = pedidos recentes ({recent.length}).</span>
+        <span>{recent.length} pedido{recent.length === 1 ? '' : 's'} recente{recent.length === 1 ? '' : 's'}</span>
       </div>
     </div>
   )
