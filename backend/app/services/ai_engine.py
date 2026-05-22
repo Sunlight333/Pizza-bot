@@ -398,12 +398,16 @@ TOOLS: list[dict[str, Any]] = [
                 "cardápio', 'tem menu?', 'quais sabores?', 'que pizzas vocês têm?', 'vamos "
                 "começar pelo menu', 'show me menu', 'me mostra as opções', 'queria ver "
                 "as pizzas', 'quais bordas vocês têm?', 'tem borda recheada?', 'quanto "
-                "custa a borda?'. Se o cliente não especificar a categoria, use 'salgada' "
-                "(default). Esta função envia a imagem REAL pelo WhatsApp; NUNCA escreva "
-                "'vou te mandar o cardápio' sem chamar esta função no mesmo turno — o "
-                "cliente não receberia a imagem. Categorias: 'salgada' (pizzas salgadas), "
-                "'doce' (pizzas doces), 'sorvete' (sorvetes), 'bebida' (bebidas), "
-                "'borda' (sabores e preços de borda recheada)."
+                "custa a borda?'. ESCOLHA DA CATEGORIA: se o cliente pedir o cardápio "
+                "GENERICAMENTE (sem distinguir salgada vs doce), use 'pizzas' — o backend "
+                "envia AS DUAS imagens (salgadas + doces) em sequência num único turno. "
+                "Use 'salgada' ou 'doce' apenas quando o cliente DEIXAR CLARO que quer só "
+                "uma (ex.: 'tem pizza doce?', 'manda as salgadas'). Esta função envia a "
+                "imagem REAL pelo WhatsApp; NUNCA escreva 'vou te mandar o cardápio' sem "
+                "chamar esta função no mesmo turno — o cliente não receberia a imagem. "
+                "Categorias: 'pizzas' (manda salgadas + doces juntas), 'salgada' (só pizzas "
+                "salgadas), 'doce' (só pizzas doces), 'sorvete' (sorvetes), 'bebida' "
+                "(bebidas), 'borda' (sabores e preços de borda recheada)."
             ),
             "parameters": {
                 "type": "object",
@@ -411,7 +415,7 @@ TOOLS: list[dict[str, Any]] = [
                 "properties": {
                     "category": {
                         "type": "string",
-                        "enum": ["salgada", "doce", "sorvete", "bebida", "borda"],
+                        "enum": ["pizzas", "salgada", "doce", "sorvete", "bebida", "borda"],
                         "description": "Categoria do cardápio a enviar",
                     },
                 },
@@ -546,6 +550,84 @@ async def _phone_rate_exceeded(phone: str, cap: int = PER_PHONE_HOURLY_CAP) -> b
         log.exception("phone rate limit check failed (failing open)")
         return False
     return False
+
+
+async def _send_one_menu_image(
+    *,
+    db: AsyncSession,
+    state: dict,
+    phone: str,
+    category: str,
+    url: str,
+) -> None:
+    """Send a single category's menu image over WhatsApp + persist the row.
+
+    Extracted from the inline tool handler so the new 'pizzas' pseudo-
+    category can fire this twice (salgada + doce) in a single tool call.
+
+    Raises on any send / file-read failure; caller decides whether to
+    abort the whole batch or just log and continue with the next sub-
+    category. Cache-miss + Meta's 30-day media_id eviction are handled
+    transparently here — caller doesn't need to know.
+    """
+    from app.services.whatsapp import client as wa
+    import mimetypes
+    rc = _get_redis()
+    cache_key = f"menu_image_media_id:{category}"
+    cached_id: Optional[str] = None
+    try:
+        cached_id = await rc.get(cache_key)
+    except Exception:
+        pass
+    if cached_id:
+        send_result = await wa.send_media(
+            phone=phone,
+            media_type="image",
+            cached_media_id=cached_id,
+        )
+        if isinstance(send_result, dict) and send_result.get("error"):
+            log.info("cached menu media_id stale, re-uploading: %s", cached_id)
+            cached_id = None
+    if not cached_id:
+        if url.startswith("/media/"):
+            media_root = Path(__file__).resolve().parents[2] / "media"
+            rel = url[len("/media/"):].lstrip("/")
+            file_path = (media_root / rel).resolve()
+            if not str(file_path).startswith(str(media_root.resolve())):
+                raise ValueError("invalid menu image path")
+            if not file_path.is_file():
+                raise FileNotFoundError(f"menu image missing on disk: {url}")
+            media_bytes = file_path.read_bytes()
+            mime = mimetypes.guess_type(str(file_path))[0] or "image/jpeg"
+            fname = file_path.name
+        else:
+            raise ValueError(
+                "menu image URL is not a local /media path; Meta "
+                "Cloud API needs raw bytes or a public link"
+            )
+        send_result = await wa.send_media(
+            phone=phone,
+            data=media_bytes,
+            media_type="image",
+            mime_type=mime,
+            filename=fname,
+        )
+        new_id = send_result.get("media_id") if isinstance(send_result, dict) else None
+        if new_id:
+            try:
+                # 25-day TTL — Meta caches 30 days, give a 5-day buffer.
+                await rc.set(cache_key, new_id, ex=25 * 24 * 3600)
+            except Exception:
+                log.exception("menu media_id cache write failed (non-fatal)")
+    await _persist_message(
+        db,
+        phone=phone,
+        customer_id=state.get("customer_id"),
+        role=MessageRole.assistant,
+        content=f"[CARDÁPIO {category.upper()}]",
+        media_url=url,
+        media_type="image",
+    )
 
 
 async def _persist_message(
@@ -1074,14 +1156,18 @@ CARDÁPIO COM IMAGEM (REGRA DURA — não falhe nessa):
       qualquer pergunta SOBRE A BORDA dispara send_menu_image(category="borda").
 
 - COMO ESCOLHER A CATEGORIA:
-    * pizza salgada → category="salgada"
-    * pizza doce → category="doce"
+    * cardápio em geral, "manda as pizzas", "quero ver o menu" SEM
+      especificar salgada vs doce → category="pizzas" (o backend manda
+      AUTOMATICAMENTE as duas imagens — salgadas + doces — em sequência).
+    * cliente DEIXOU CLARO que quer só salgada ("tem alguma salgada
+      diferente?", "manda as salgadas") → category="salgada"
+    * cliente DEIXOU CLARO que quer só doce ("tem pizza doce?",
+      "quero ver as doces") → category="doce"
     * sorvete → category="sorvete"
     * bebida → category="bebida"
     * borda recheada / sabores de borda → category="borda"
-    * Se o cliente não especificar (e não é pergunta sobre borda), ASSUMA
-      "salgada" (pizza salgada é o cardápio principal). Não pergunte;
-      chame direto e ofereça os outros depois.
+    * Quando ambíguo (e não é pergunta sobre borda/sorvete/bebida), use
+      "pizzas" — manda as duas e cobre os dois interesses. Não pergunte.
 
 - DEPOIS de chamar send_menu_image com sucesso, mande UMA frase curta no chat:
   "Manda aí, ó 👇" / "Esses são nossos sabores 🍕" / "Tá aí 👆" — NUNCA repita
@@ -1533,6 +1619,62 @@ async def _execute_tool_call(
             cfg = await _get_bot_config(db)
             menu_images = cfg.menu_images or {}
             category = (args.get("category") or "").strip().lower()
+
+            # Pseudo-category "pizzas" expands to BOTH the salgada and the
+            # doce images sent back-to-back. The LLM uses this when the
+            # customer asked for the menu generically (no "doce" /
+            # "salgada" word) — covers both interests in one shot instead
+            # of asking the customer "salgada or doce?" first.
+            if category == "pizzas":
+                bundle = [
+                    ("salgada", menu_images.get("salgada")),
+                    ("doce", menu_images.get("doce")),
+                ]
+                available = [(c, u) for c, u in bundle if u]
+                if not available:
+                    return (
+                        "INDISPONÍVEL: nenhuma imagem de pizza (salgada/doce) "
+                        "cadastrada. Liste as opções em texto pro cliente — "
+                        "3-4 sugestões salgadas + 1-2 doces — e pergunte o "
+                        "que ele quer."
+                    )
+                sent_categories: list[str] = []
+                last_url: Optional[str] = None
+                last_err: Optional[str] = None
+                for sub_cat, sub_url in available:
+                    try:
+                        await _send_one_menu_image(
+                            db=db, state=state, phone=phone,
+                            category=sub_cat, url=sub_url,
+                        )
+                        sent_categories.append(sub_cat)
+                        last_url = sub_url
+                    except Exception as sub_err:
+                        log.exception("send_menu_image(pizzas) sub-send failed: %s", sub_cat)
+                        last_err = str(sub_err)
+                if not sent_categories:
+                    return (
+                        f"FALHA: não consegui enviar nenhuma imagem ({last_err}). "
+                        "Continue em texto: liste 3-4 sabores salgados e 1-2 "
+                        "doces e pergunte o que o cliente quer."
+                    )
+                state["_last_bot_media"] = {"url": last_url, "type": "image"}
+                if len(sent_categories) == 2:
+                    return (
+                        "OK — enviei as DUAS imagens (pizzas salgadas + doces) "
+                        "pelo WhatsApp. Mande UMA frase curta no chat tipo "
+                        "'Esses são nossos sabores 🍕👆 Manda aí o que quer!' "
+                        "ou 'Tá aí 👆 — qual te chamou atenção?'. NÃO repita "
+                        "o cardápio em texto."
+                    )
+                only = sent_categories[0]
+                return (
+                    f"OK — enviei só a imagem de pizzas {only} (a outra "
+                    f"categoria não tem imagem cadastrada). Mande UMA frase "
+                    "curta tipo 'Tá aí 👆' e ofereça as outras opções em "
+                    "texto se fizer sentido."
+                )
+
             url = menu_images.get(category)
             if not url:
                 return (
@@ -1541,73 +1683,10 @@ async def _execute_tool_call(
                     "3-4 sugestões e perguntando o que ele quer."
                 )
             try:
-                from app.services.whatsapp import client as wa
-                rc = _get_redis()
-                cache_key = f"menu_image_media_id:{category}"
-                cached_id: Optional[str] = None
-                try:
-                    cached_id = await rc.get(cache_key)
-                except Exception:
-                    pass
-                if cached_id:
-                    send_result = await wa.send_media(
-                        phone=phone,
-                        media_type="image",
-                        cached_media_id=cached_id,
-                    )
-                    # Meta sometimes evicts media before the 30-day TTL.
-                    # If the send fails with an error, retry once via the
-                    # upload path and refresh the cache.
-                    if isinstance(send_result, dict) and send_result.get("error"):
-                        log.info("cached menu media_id stale, re-uploading: %s", cached_id)
-                        cached_id = None
-                if not cached_id:
-                    import mimetypes
-                    if url.startswith("/media/"):
-                        media_root = Path(__file__).resolve().parents[2] / "media"
-                        rel = url[len("/media/"):].lstrip("/")
-                        file_path = (media_root / rel).resolve()
-                        if not str(file_path).startswith(str(media_root.resolve())):
-                            raise ValueError("invalid menu image path")
-                        if not file_path.is_file():
-                            raise FileNotFoundError(f"menu image missing on disk: {url}")
-                        media_bytes = file_path.read_bytes()
-                        mime = mimetypes.guess_type(str(file_path))[0] or "image/jpeg"
-                        fname = file_path.name
-                    else:
-                        raise ValueError(
-                            "menu image URL is not a local /media path; Meta "
-                            "Cloud API needs raw bytes or a public link"
-                        )
-                    send_result = await wa.send_media(
-                        phone=phone,
-                        data=media_bytes,
-                        media_type="image",
-                        mime_type=mime,
-                        filename=fname,
-                    )
-                    new_id = send_result.get("media_id") if isinstance(send_result, dict) else None
-                    if new_id:
-                        try:
-                            # 25-day TTL — Meta caches 30 days, give a 5-day buffer.
-                            await rc.set(cache_key, new_id, ex=25 * 24 * 3600)
-                        except Exception:
-                            log.exception("menu media_id cache write failed (non-fatal)")
-                # Persist as an assistant message so both the admin chat viewer
-                # (real customer side) and the simulator panel can render the
-                # image. The text body is empty so the chat viewer's
-                # placeholder-hide logic kicks in and only the <img> shows.
-                await _persist_message(
-                    db,
-                    phone=phone,
-                    customer_id=state.get("customer_id"),
-                    role=MessageRole.assistant,
-                    content=f"[CARDÁPIO {category.upper()}]",
-                    media_url=url,
-                    media_type="image",
+                await _send_one_menu_image(
+                    db=db, state=state, phone=phone,
+                    category=category, url=url,
                 )
-                # Stash for the simulator response so the panel can render it
-                # in its own in-memory transcript without a second round-trip.
                 state["_last_bot_media"] = {"url": url, "type": "image"}
                 return (
                     f"OK — imagem do cardápio '{category}' enviada pelo WhatsApp. "
