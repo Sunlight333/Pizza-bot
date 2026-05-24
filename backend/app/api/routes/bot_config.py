@@ -32,4 +32,12 @@ async def update_config(payload: BotConfigUpdate, db: AsyncSession = Depends(get
         setattr(cfg, k, v)
     await db.commit()
     await db.refresh(cfg)
+    # PIX key, hours, pricing rule, etc. are all baked into the bot's
+    # cached prompt — drop the cache so the next customer turn rebuilds
+    # with the fresh config (e.g. operator just removed pix_key).
+    try:
+        from app.services.ai_engine import invalidate_menu_cache
+        await invalidate_menu_cache()
+    except Exception:
+        pass
     return cfg

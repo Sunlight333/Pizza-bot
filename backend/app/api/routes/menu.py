@@ -451,11 +451,22 @@ def _sync_image_url(data: dict) -> None:
 
 
 async def _invalidate_customer_menu_cache() -> None:
-    """Drop the customer-portal menu cache. Best-effort — never blocks
-    an admin write if Redis is down."""
+    """Drop BOTH caches that mirror the menu state:
+      1. Customer-portal menu cache (route-level Redis cache used by the
+         web /cardapio page).
+      2. AI engine menu_bundle cache (the LLM's prompt context — was
+         blind to admin edits for up to 60s, causing customer reports
+         like "added soda but bot still doesn't see it").
+    Best-effort — never blocks an admin write if Redis is down.
+    """
     try:
         from app.api.routes.customer.menu import invalidate
         await invalidate()
+    except Exception:
+        pass
+    try:
+        from app.services.ai_engine import invalidate_menu_cache
+        await invalidate_menu_cache()
     except Exception:
         pass
 

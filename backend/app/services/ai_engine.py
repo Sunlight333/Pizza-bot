@@ -55,11 +55,26 @@ def _openai() -> AsyncOpenAI:
 # zones, pizza size names. All three are pure DB-derived strings that
 # change at most a few times per day; rebuilding them on every customer
 # message wastes ~1-2s of DB time and bloats the LLM prompt with
-# variation that does not exist. 60s TTL is short enough that menu edits
-# in the admin panel propagate quickly without explicit invalidation.
+# variation that does not exist. Explicit invalidation hooks fire from
+# every admin mutation endpoint (menu/products, categories, delivery
+# zones, bot_config) via invalidate_menu_cache(); the 10s TTL is the
+# safety net for changes that bypass those endpoints (direct DB edits,
+# migrations, etc).
 _redis_client: Optional[_redis.Redis] = None
 _MENU_BUNDLE_KEY = "ai_engine:menu_bundle:v1"
-_MENU_BUNDLE_TTL_SECONDS = 60
+_MENU_BUNDLE_TTL_SECONDS = 10
+
+
+async def invalidate_menu_cache() -> None:
+    """Drop the cached menu bundle so the next bot turn rebuilds it from
+    fresh DB state. Idempotent; safe to call from any admin mutation
+    endpoint that touches products, categories, delivery zones, or
+    bot_config (PIX key, pricing rule, hours, etc).
+    """
+    try:
+        await _get_redis().delete(_MENU_BUNDLE_KEY)
+    except Exception:
+        log.exception("menu bundle cache invalidate failed (non-fatal)")
 
 
 def _get_redis() -> _redis.Redis:
@@ -810,6 +825,20 @@ async def _build_system_prompt(db: AsyncSession, state: dict) -> str:
             f"  tipo: {key_type}\n"
             f"  chave: {cfg.pix_key}{holder}\n"
         )
+    else:
+        # Operator cleared the PIX key in admin → PIX is OFF as a payment option.
+        # The set_payment_method tool still has 'pix' in its enum (OpenAI tool
+        # schemas are static), so we instruct the LLM here NOT to mention or
+        # accept it. Server-side block in the handler below catches any model
+        # that ignores the instruction.
+        pix_block = (
+            "\nPIX DESATIVADO: a pizzaria NÃO está aceitando PIX no momento "
+            "(operador removeu a chave). NUNCA ofereça PIX e NUNCA chame "
+            "set_payment_method(method='pix'). Se o cliente perguntar sobre "
+            "PIX, responda: 'Por enquanto não tô aceitando PIX, só cartão "
+            "ou dinheiro na entrega 😊'. Aceite apenas: cartão (credit/debit), "
+            "dinheiro (cash) ou retirada (pickup).\n"
+        )
 
     DOW_LABELS = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
     closed = cfg.closed_weekdays or []
@@ -1446,7 +1475,23 @@ async def _execute_tool_call(
             return "OK — retirada no balcão. Peça confirmação do pedido."
 
         if name == "set_payment_method":
-            cart["payment_method"] = args["method"]
+            method = args["method"]
+            # Server-side guard: if operator cleared pix_key in admin, PIX
+            # is OFF. The prompt tells the LLM not to offer it, but a
+            # rogue/cached model could still try. Catch and force a
+            # recovery so the customer never sees a pix-as-accepted state.
+            if method == "pix":
+                _cfg = await _get_bot_config(db)
+                if not _cfg.pix_key:
+                    return (
+                        "BLOQUEADO: PIX está DESATIVADO (operador removeu "
+                        "a chave PIX no painel admin). Diga ao cliente: "
+                        "'Por enquanto não tô aceitando PIX, só cartão "
+                        "ou dinheiro na entrega 😊' e pergunte qual das "
+                        "opções restantes ele prefere. NÃO marque PIX no "
+                        "pedido."
+                    )
+            cart["payment_method"] = method
             state["state"] = "confirming"
             # Hard guard against the silent-summary bug: if the LLM has been
             # describing the order in text without ever calling
