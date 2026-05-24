@@ -111,8 +111,22 @@ async def _lookup_band_for_distance(
 ) -> Optional[DeliveryZone]:
     """Return the active zone whose [distance_min_km..max_km] contains km.
 
-    When multiple bands overlap (operator misconfiguration), the smallest
-    band wins — narrower bands are more specific.
+    Two-stage match to handle real-world operator config:
+
+      1. Exact containment — distance_min_km <= km <= distance_max_km.
+         When several bands overlap (operator misconfig), the NARROWEST
+         band wins, since narrower bands are more specific.
+
+      2. Gap fallback — when the operator's bands aren't strictly
+         contiguous (e.g. 5.10-6.00 then 6.10-7.00, leaving the 6.01-6.09
+         range orphaned), the exact match returns None even though every
+         band visually looks continuous. Without this fallback the bot
+         told a customer 6.08 km away that we don't deliver — even
+         though the next band over had a fee perfectly fine for 6.08.
+         We pick the band whose min is the closest one ABOVE km (i.e.
+         the next-narrower-band-up). The customer is charged the slightly
+         higher fee, but at least the order goes through. Cheaper than
+         losing the sale to a label cosmetic.
     """
     res = await db.execute(
         select(DeliveryZone)
@@ -127,7 +141,30 @@ async def _lookup_band_for_distance(
             (DeliveryZone.distance_max_km - DeliveryZone.distance_min_km).asc(),
         )
     )
-    return res.scalars().first()
+    exact = res.scalars().first()
+    if exact:
+        return exact
+
+    # Gap fallback — find the band immediately above this km value, BUT
+    # only if the gap is small (≤ 1 km). A 5cm-wide gap between bands is
+    # almost certainly a cosmetic mistake (5,1 vs 5,1 vs 6,1); a 4 km gap
+    # is a real coverage hole the operator intentionally left empty.
+    res = await db.execute(
+        select(DeliveryZone)
+        .where(
+            DeliveryZone.is_active.is_(True),
+            DeliveryZone.distance_min_km.isnot(None),
+            DeliveryZone.distance_max_km.isnot(None),
+            DeliveryZone.distance_min_km > km,
+        )
+        .order_by(DeliveryZone.distance_min_km.asc())
+    )
+    candidate = res.scalars().first()
+    if candidate is None:
+        return None
+    if float(candidate.distance_min_km) - km <= 1.0:
+        return candidate
+    return None
 
 
 async def calculate_fee_by_distance(
