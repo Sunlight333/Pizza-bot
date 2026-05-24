@@ -182,7 +182,14 @@ TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "add_pizza_to_cart",
-            "description": "Adiciona uma pizza ao carrinho (inteira ou meia-a-meia).",
+            "description": (
+                "Adiciona uma pizza ao carrinho (inteira ou meia-a-meia). "
+                "REGRA DURA: BROTINHO é sempre 1 SABOR. Se o cliente pedir "
+                "brotinho meio-a-meio, NÃO chame esta função — chame "
+                "ask_clarification e explique que brotinho é individual "
+                "(só 1 sabor) e ofereça: (a) escolher 1 sabor só pro "
+                "brotinho ou (b) fazer meio-a-meio numa pizza Grande."
+            ),
             "parameters": {
                 "type": "object",
                 "required": ["flavor_ids", "size"],
@@ -918,6 +925,28 @@ REGRAS IMPORTANTES:
 - NÃO envie o cardápio completo. Pergunte o que o cliente quer; só sugira se ele pedir.
 - Confirme sabores, tamanho, borda e adicionais antes de adicionar ao carrinho.
 - Para pizza meio-a-meio: pergunte os dois sabores e {half_pizza_rule}.
+
+BROTINHO É SEMPRE 1 SABOR (regra dura — não falhe nessa):
+- BROTINHO é uma pizza individual pequena. NÃO existe brotinho meio-a-meio.
+- Se o cliente pedir "brotinho meio a meio" ou "brotinho metade X metade Y",
+  NÃO chame add_pizza_to_cart com dois flavor_ids. Chame ask_clarification
+  e explique gentilmente: "O brotinho é uma pizza individual, fica com 1
+  sabor só — qual dos dois você prefere pro brotinho? Ou prefere fazer
+  meio-a-meio numa pizza Grande, que aí dá certo?".
+- Mesmo se o cliente insistir, MANTENHA a regra. O sistema também recusa
+  no backend, então tentar mesmo assim só gera erro e atrasa o pedido.
+
+OFERECER CORTESIAS APÓS PIZZA (regra dura — não esqueça):
+- TODA vez que add_pizza_to_cart retornar OK (pizza acabou de entrar no
+  carrinho), na MESMA mensagem em que confirma a pizza, OFEREÇA cebola
+  e requeijão como cortesia. Exemplo: "Anotado! 🍕 Quer com cebola e
+  requeijão? Vai por cortesia, sem custo extra."
+- Se o cliente aceitar, chame add_pizza_to_cart de novo com as cortesias
+  em extras, OU use uma função de update se houver. Se não houver,
+  remova a pizza antes e re-adicione com os extras.
+- Se o cliente recusar, prossiga normal (oferecer borda, bebida, etc.).
+- Não ofereça as cortesias mais de uma vez por pizza. Se já perguntou
+  uma vez e cliente respondeu, NÃO repita.
 
 PIZZA MEIO-A-MEIO — REGRA DURA (não falhe nessa):
 - Meio-a-meio é UMA pizza com DOIS sabores. Chame add_pizza_to_cart

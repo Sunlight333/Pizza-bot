@@ -53,9 +53,20 @@ def _size_allows_half(product: Product, size: str) -> bool:
     Some operators only let "grande" do half-and-half; brotinho/pequena/média must
     be 1-flavor. Each size dict can carry its own allows_half; rows that
     predate the 0008 migration fall back to Product.allows_half.
+
+    HARD GUARANTEE: brotinho is ALWAYS 1-flavor regardless of DB config.
+    Customer complaint 2026-05-22 — the bot accepted "brotinho meio a meio"
+    because the size dict on the affected products lacked an explicit
+    allows_half=false, so the function fell through to Product.allows_half=true
+    (correct for the grande size on the same product). Now we deny brotinho
+    up front so config drift can't reopen this hole. "broto" matches both
+    "brotinho" and rarer spellings.
     """
+    s = (size or "").strip().lower()
+    if "broto" in s:
+        return False
     for entry in product.sizes or []:
-        if entry.get("size", "").lower() == size.lower():
+        if entry.get("size", "").lower() == s:
             v = entry.get("allows_half")
             if v is None:
                 return bool(product.allows_half)
