@@ -28,11 +28,29 @@ Creates:
 
 ### WhatsApp setup (Meta WhatsApp Cloud API)
 
-The bot uses Meta WhatsApp Cloud API exclusively. To wire it up:
+The bot uses Meta WhatsApp Cloud API exclusively. The full ordered
+walkthrough lives in [`whatsapp_setup.md`](whatsapp_setup.md) — Phases
+0–8, each with a `curl` verify step. Phase summary:
 
-1. In Meta Business Settings → System users, create a system user and generate a permanent access token with `whatsapp_business_messaging` + `whatsapp_business_management` scopes.
-2. In App Dashboard → WhatsApp → Configuration, set the webhook URL to `https://YOUR_DOMAIN/api/webhook/meta` and subscribe to the `messages` field.
-3. Populate `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, and `WHATSAPP_APP_SECRET` in `.env`.
+- **Phase 0** — Business Manager, App, WABA, phone, display name,
+  business verification.
+- **Phase 1** — Permanent system-user token (`META_ACCESS_TOKEN`).
+- **Phase 2** — Webhook URL + verify token handshake
+  (`META_VERIFY_TOKEN`).
+- **Phase 3** — Subscribe the App's `messages` webhook field (the
+  easy-to-miss step).
+- **Phase 4** — Phone-number registration + 2-step PIN.
+- **Phase 5** — Payment method on the WABA.
+- **Phase 6** — Submit the four templates from
+  [`whatsapp_templates.md`](whatsapp_templates.md).
+- **Phase 7** — App Review for Advanced Access → flip App Mode to Live.
+- **Phase 8** — Tier ramp-up (automatic).
+
+Env vars consumed by the backend (see `backend/app/config.py`):
+`META_ACCESS_TOKEN`, `META_APP_SECRET`, `META_PHONE_NUMBER_ID`,
+`META_WABA_ID`, `META_DISPLAY_PHONE_NUMBER`, `META_VERIFY_TOKEN`,
+`META_GRAPH_VERSION`, plus the four `META_TEMPLATE_*` template-name
+slots.
 
 ## Layout
 

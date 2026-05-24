@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+*.log
+
+# Env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Docker
+*.pid
+
+# DB
+*.db
+*.sqlite
+
+# Misc
+*.ogg
+.claude/
+
+# Bridge — only the .example template is committed; real config + caches are local
+bridge/config.ini
+bridge/tax_cache.json
+bridge/*.spec
+bridge/build/
+bridge/dist/
+
+# Backups
+backups/
+*.dump
+*.sql.gz
+
+# Uploaded media (product photos uploaded via the admin UI live here)
+backend/media/
