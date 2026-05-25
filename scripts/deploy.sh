@@ -30,6 +30,18 @@ fi
 docker run --rm "${VITE_ENV_ARGS[@]}" -v "$PROJECT_DIR/frontend":/app -w /app node:20-alpine \
   sh -c "npm ci --no-audit --no-fund && npm run build"
 
+# Fail-fast guard. Real incident 2026-05-24: an interrupted Vite build
+# left dist/ with only the public/ assets (favicon, images) but no
+# index.html or assets/*.js. The deploy continued, nginx kept serving
+# the broken dist, and the site returned 500 to every customer until
+# we noticed. Refuse to proceed if the canonical Vite outputs are
+# missing — the running site stays on whatever it was before.
+if [ ! -f "$PROJECT_DIR/frontend/dist/index.html" ] || [ ! -d "$PROJECT_DIR/frontend/dist/assets" ]; then
+    echo "[deploy] FATAL: Vite build did not produce dist/index.html or dist/assets/."
+    echo "[deploy] Aborting — production frontend is unchanged. Investigate the build log above."
+    exit 1
+fi
+
 echo "[deploy] rebuilding backend image"
 $COMPOSE build backend
 

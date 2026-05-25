@@ -1,6 +1,6 @@
 """Conversation viewer API for the admin panel."""
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import redis.asyncio as redis
@@ -48,6 +48,97 @@ class ConversationMessageOut(BaseModel):
 
 class SendMessagePayload(BaseModel):
     content: str
+
+
+class StaleConversation(BaseModel):
+    phone: str
+    state: str
+    customer_name: Optional[str] = None
+    cart_items: int
+    last_message_at: Optional[datetime] = None
+    last_message_preview: Optional[str] = None
+    idle_minutes: float
+    cancellation_reason: Optional[str] = None
+    handoff_reason: Optional[str] = None
+    nudged_at: Optional[str] = None
+
+
+@router.get("/stale", response_model=List[StaleConversation])
+async def list_stale(
+    since_minutes: int = 10,
+    db: AsyncSession = Depends(get_db),
+):
+    """Cold/abandoned conversations the operator should look at.
+
+    Returns conversations whose last persisted message is older than
+    `since_minutes` AND state is mid-order (building_order, collecting_*,
+    confirming, human_takeover). Surfaces:
+
+      - phone + last preview + idle minutes
+      - cart_items count (so operator knows whether there was a real
+        order in flight)
+      - cancellation_reason / handoff_reason from Redis state when the
+        conversation was already auto-escalated by the bot
+      - nudged_at to indicate the scheduler already pinged this one
+
+    Powers the "Conversas Frias" admin view — operator scans the list
+    each shift and rescues any with cart items > 0 by calling the
+    customer directly on (17) 3237-1112 / WhatsApp Business.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
+    rc = state_svc._client()
+    out: list[StaleConversation] = []
+    mid_states = {
+        "building_order", "collecting_address", "collecting_payment",
+        "confirming", "human_takeover",
+    }
+    seen_phones: set[str] = set()
+    async for key in rc.scan_iter(match="conv:*", count=200):
+        phone = key.split(":", 1)[1] if isinstance(key, str) else key.decode().split(":", 1)[1]
+        if phone in seen_phones:
+            continue
+        seen_phones.add(phone)
+        try:
+            state = await state_svc.get_state(phone)
+        except Exception:
+            continue
+        if state.get("state") not in mid_states:
+            continue
+        # Fetch last message
+        last = (
+            await db.execute(
+                select(ConversationMessage)
+                .where(ConversationMessage.phone == phone)
+                .order_by(ConversationMessage.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if last is None or last.created_at > cutoff:
+            continue
+
+        cust = (
+            await db.execute(
+                select(Customer.name).where(Customer.phone == phone)
+            )
+        ).scalar_one_or_none()
+        idle_min = (datetime.now(timezone.utc) - last.created_at).total_seconds() / 60.0
+        cart = state.get("cart") or {}
+        items = [i for i in (cart.get("items") or []) if not i.get("is_delivery_fee")]
+        out.append(StaleConversation(
+            phone=phone,
+            state=str(state.get("state") or ""),
+            customer_name=cust,
+            cart_items=len(items),
+            last_message_at=last.created_at,
+            last_message_preview=(last.content or "")[:140],
+            idle_minutes=round(idle_min, 1),
+            cancellation_reason=state.get("cancellation_reason"),
+            handoff_reason=state.get("handoff_reason"),
+            nudged_at=state.get("_nudged_at"),
+        ))
+    # Sort by most idle first — operator's highest-leverage rescues
+    out.sort(key=lambda r: r.idle_minutes, reverse=True)
+    return out
 
 
 @router.get("/active", response_model=List[ActiveConversation])

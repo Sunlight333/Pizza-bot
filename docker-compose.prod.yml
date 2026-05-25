@@ -52,9 +52,20 @@ services:
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
 
+  # NOTE — orphan service. The containerized nginx never serves public
+  # traffic on this VPS: the host Ubuntu nginx
+  # (/etc/nginx/sites-available/planaltopizzasesorvetes) already binds
+  # 80/443 and proxies to backend at 127.0.0.1:8000 and to the Vite
+  # frontend container at 127.0.0.1:5173. Every previous deploy spent
+  # ~15s flapping this container in restart loop trying to bind a
+  # port that's already taken. The `profiles: [unused]` line keeps
+  # the definition for documentation but prevents `docker compose up`
+  # from starting it. To bring it back as the real proxy, drop the
+  # host nginx config first and remove this profile line.
   nginx:
     image: nginx:1.27-alpine
     restart: always
+    profiles: [unused]
     ports:
       - "80:80"
       - "443:443"

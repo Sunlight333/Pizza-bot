@@ -824,6 +824,19 @@ async def _build_system_prompt(db: AsyncSession, state: dict) -> str:
             f"\nDADOS DO PIX (compartilhe SOMENTE quando o cliente escolher pagar com PIX):\n"
             f"  tipo: {key_type}\n"
             f"  chave: {cfg.pix_key}{holder}\n"
+            f"\nFLUXO PIX OBRIGATÓRIO (regra dura — falhas aqui geram pedido "
+            f"\"fantasma\" pago errado ou não pago):\n"
+            f"- Ao mandar a chave PIX, SEMPRE inclua o VALOR EXATO em destaque: "
+            f"  \"Valor exato: R$ XX,XX — manda esse valor certinho 🙏\".\n"
+            f"- Logo após a chave + valor, SEMPRE peça o comprovante: \"Quando "
+            f"  pagar, manda foto ou PDF do comprovante por aqui pra eu liberar "
+            f"  seu pedido 😊\". Sem comprovante = pedido NÃO entra em produção.\n"
+            f"- Se o cliente disser \"já paguei\" sem mandar comprovante, peça "
+            f"  o comprovante UMA vez de novo. Se ele insistir sem mandar, chame "
+            f"  request_human_handoff — operador valida no banco.\n"
+            f"- Se o cliente mandar comprovante (mídia), CONFIRME o recebimento "
+            f"  e marque como pendente de validação humana — não diga \"pedido "
+            f"  confirmado\" antes do operador validar no banco.\n"
         )
     else:
         # Operator cleared the PIX key in admin → PIX is OFF as a payment option.
@@ -1015,6 +1028,18 @@ PIZZA MEIO-A-MEIO — REGRA DURA (não falhe nessa):
   pedido. NÃO chame duas vezes (uma para cada sabor) — isso adiciona
   DUAS pizzas inteiras ao carrinho e cobra dobrado, bug grave que já
   gerou reclamação real.
+
+- QUANTIDADE > 1 — REGRA DURA: nunca chame add_pizza_to_cart com
+  quantity > 1 a menos que o cliente tenha falado EXPLICITAMENTE um
+  número ("duas pizzas", "2 calabresa", "dobra essa"). Frases ambíguas
+  ("manda uma calabresa e uma mussarela") NÃO significam quantity=2 da
+  mesma pizza — significam DUAS pizzas diferentes que devem ser duas
+  chamadas separadas com quantity=1 cada. Em caso de dúvida sobre
+  quantidade, chame ask_clarification ANTES: "Pra confirmar — você
+  quer 1 pizza ou 2 pizzas iguais dessa?". O caso real (JDDiesel,
+  2026-05-22) foi cobrança de R$ 110 quando o cliente queria 1 pizza
+  de R$ 55 — bot inferiu quantity=2 de contexto ambíguo. Verifique o
+  número EXATO que o cliente disse antes de multiplicar.
 - Se você já tinha adicionado os dois sabores como pizzas separadas
   (chamadas duplas) e o cliente CORRIGIR ("é meio a meio, uma pizza
   só", "não, é meio-a-meio", "uma pizza só, metade X metade Y"),

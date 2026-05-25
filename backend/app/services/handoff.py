@@ -30,6 +30,14 @@ CUSTOMER_FALLBACK_TEXT = (
     "vontade."
 )
 
+# Reasons that indicate the customer was on the cancellation/abandonment
+# path. Tagged so the stale-conversation report can break down the funnel
+# (% of handoffs that were cancellations vs. other escalation types).
+_CANCEL_REASONS = {
+    "cancel_request", "customer_complaint", "customer_frustration",
+    "customer_abandon", "ai_triggered_cancel",
+}
+
 
 async def trigger_handoff(
     phone: str,
@@ -50,8 +58,29 @@ async def trigger_handoff(
     data = await state_svc.get_state(phone)
     data["state"] = "human_takeover"
     data["handed_off_at"] = datetime.now(timezone.utc).isoformat()
+    data["handoff_reason"] = reason
+    if reason in _CANCEL_REASONS:
+        data["cancellation_reason"] = reason
     await state_svc.set_state(phone, data)
     await manager.broadcast("handoff_requested", {"phone": phone, "reason": reason})
+
+    # Persist a system breadcrumb on the conversation log so the analytics
+    # query for cancellations doesn't have to read Redis state (volatile,
+    # 30-min TTL). One row per handoff, role=system, content tagged
+    # `[HANDOFF reason=X]` so it's grep-able.
+    try:
+        from app.database import AsyncSessionLocal
+        from app.models.conversation_message import ConversationMessage, MessageRole
+        async with AsyncSessionLocal() as db:
+            db.add(ConversationMessage(
+                phone=phone,
+                customer_id=data.get("customer_id"),
+                role=MessageRole.system,
+                content=f"[HANDOFF reason={reason}]",
+            ))
+            await db.commit()
+    except Exception:
+        log.exception("handoff: breadcrumb persist failed for %s", phone)
 
     if notify_customer:
         try:
