@@ -25,7 +25,9 @@ log = logging.getLogger(__name__)
 
 
 CUSTOMER_FALLBACK_TEXT = (
-    "Só um instante 🙏 Um atendente já vai te responder por aqui mesmo."
+    "Já avisei a equipe 🙏 Alguém vai te responder por aqui em instantes. "
+    "Se preferir adiantar, pode chamar direto no (17) 3237-1112 — fica à "
+    "vontade."
 )
 
 
