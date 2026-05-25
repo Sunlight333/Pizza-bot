@@ -1,18 +1,33 @@
 """
 Datacaixa .txt generator — formats a pipe-delimited UTF-8 file per Datacaixa's
-spec (confirmed with Gabriel, Datacaixa support).
+public layout spec at https://datacaixa.com.br/wp-content/uploads/layout_pedido.txt
+(canonical example at https://datacaixa.com.br/wp-content/uploads/exemplo_pedido.txt).
 
-Layout:
-  PEDIDO|customer_name|cpf|seller|observation|
-  ITEM|code|desc|price|qty|UN|NCM|total|CEST|CFOP|IBPT|CSOSN|origem|code|
+Layout (current as of Datacaixa Integração 2025.10.20):
+  PEDIDO|NOME|CPF_CNPJ|NOME_GARCOM|OBS|
+  ITEM|CODIGO|DESCRICAO|PRECO_VENDA|QUANTIDADE|UN|NCM|IMPOSTO_FEDERAL|IMPOSTO_ESTADUAL|IMPOSTO_MUNICIPAL|FONTE|CFOP|CSOSN|ORIGEM_MERCADORIA|CEST|
   ITEM|...
-  PGTO|payment_code|total|
+  PGTO|CODIGO|VALOR|
 
 - Decimal separator: comma (49,90)
-- Encoding: UTF-8
+- Encoding: UTF-8 (LF line endings)
 - Pipe: |
 - Delivery fee: its own ITEM line
 - Observation field holds: address, phone, neighborhood, any mods
+- IMPOSTO_* fields are informational percentages (Lei da Transparência);
+  defaults to 0 here, the contadora can calibrate per-product in
+  Datacaixa's own product registry later. NFC-e issuance uses NCM/CFOP/
+  CSOSN/CEST directly, not these display values.
+- FONTE is the literal string "IBPT" (Instituto Brasileiro de Planejamento
+  e Tributação) — the source the percentages would be derived from.
+
+Update history:
+- 2026-05-22: realigned field order to match published spec after
+  Datacaixa support confirmed the parser was throwing "List index out
+  of bounds (17)" on the old layout (code|desc|...|NCM|total|CEST|
+  CFOP|IBPT|CSOSN|origem|ibpt_code|). New layout drops the total +
+  ibpt_code fields and adds IMPOSTO_FEDERAL/ESTADUAL/MUNICIPAL/FONTE/
+  CEST in the spec-mandated positions.
 
 Counter is atomic via Redis INCR so concurrent orders don't collide.
 """
@@ -113,33 +128,38 @@ async def generate_order_file(db: AsyncSession, order_id: int) -> str:
         unit_price = _brl(item.unit_price)
         qty = item.quantity
         unit = item.unit or "UN"
-        total = _brl(float(item.unit_price) * qty)
 
         if item.is_delivery_fee:
             # Delivery fee uses a neutral profile — Datacaixa accepts service CFOP 5949.
             code = "TAXA"
             ncm = "00000000"
-            cest = ""
             cfop = "5949"
-            ibpt = ""
             csosn = fb(None, cfg.default_csosn if cfg else None, "102")
             origin = fb(None, cfg.default_origin_code if cfg else None, "0")
-            ibpt_code = ""
+            cest = ""
         else:
             p = products.get(item.product_id) if item.product_id else None
             code = _clean(p.datacaixa_code) if p and p.datacaixa_code else (str(item.product_id or ""))
             # 3-tier fallback: product field → BotConfig default → hardcoded last-resort.
             ncm = fb(p.ncm if p else None, cfg.default_ncm if cfg else None, "")
-            cest = fb(p.cest if p else None, cfg.default_cest if cfg else None, "")
             cfop = fb(p.cfop if p else None, cfg.default_cfop if cfg else None, "5102")
-            ibpt = ""
             csosn = fb(p.csosn if p else None, cfg.default_csosn if cfg else None, "102")
             origin = fb(p.origin_code if p else None, cfg.default_origin_code if cfg else None, "0")
-            ibpt_code = fb(p.ibpt_code if p else None, cfg.default_ibpt_code if cfg else None, "")
+            cest = fb(p.cest if p else None, cfg.default_cest if cfg else None, "")
+
+        # IMPOSTO_FEDERAL/ESTADUAL/MUNICIPAL are informational tax-percentage
+        # disclosures (Lei da Transparência). Defaults to 0; calibrate later
+        # in Datacaixa's product registry if the contadora wants real values
+        # printed on the receipt. NFC-e issuance does not depend on these.
+        imp_federal = "0"
+        imp_estadual = "0"
+        imp_municipal = "0"
+        fonte = "IBPT"
 
         lines.append(
-            f"ITEM|{code}|{desc}|{unit_price}|{qty}|{unit}|{ncm}|{total}|"
-            f"{cest}|{cfop}|{ibpt}|{csosn}|{origin}|{ibpt_code}|"
+            f"ITEM|{code}|{desc}|{unit_price}|{qty}|{unit}|{ncm}|"
+            f"{imp_federal}|{imp_estadual}|{imp_municipal}|{fonte}|"
+            f"{cfop}|{csosn}|{origin}|{cest}|"
         )
 
     # Payment
