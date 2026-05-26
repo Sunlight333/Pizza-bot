@@ -8,8 +8,20 @@ import PizzaSpinner from '@/components/ui/PizzaSpinner'
 import { useChatStream } from '@/hooks/useChatStream'
 import { getApiBase } from '@/utils/apiUrl'
 
-const fmtTime = (iso) =>
-  new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+// Bubble timestamp — short date + time so the operator can audit
+// late-night conversations without having to scan up for the day
+// separator. Day separator chips still render between days, but the
+// per-bubble timestamp is now self-sufficient. Format example:
+//   "12:13 · 26/05" (current year)
+//   "12:13 · 26/05/25" (previous years, year suffix appended)
+const fmtTime = (iso) => {
+  const d = new Date(iso)
+  const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  const day = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+  const sameYear = d.getFullYear() === new Date().getFullYear()
+  const yr = sameYear ? '' : `/${String(d.getFullYear()).slice(-2)}`
+  return `${time} · ${day}${yr}`
+}
 
 // Per-day label rendered as a chip between message groups when the day
 // changes between two consecutive messages. Today/yesterday get friendly
