@@ -44,6 +44,10 @@ class ConversationMessageOut(BaseModel):
     media_url: Optional[str] = None
     media_type: Optional[str] = None
     created_at: datetime
+    # Meta delivery status for outbound messages, populated by the webhook
+    # status handler. One of: 'sent', 'delivered', 'read', 'failed', or
+    # None for inbound rows and outbound rows that never finished sending.
+    delivery_status: Optional[str] = None
 
 
 class SendMessagePayload(BaseModel):
@@ -220,6 +224,7 @@ async def list_messages(
             media_url=r.media_url,
             media_type=r.media_type,
             created_at=r.created_at,
+            delivery_status=r.delivery_status,
         )
         for r in rows
     ]
@@ -256,13 +261,21 @@ async def send_admin_message(
         raise HTTPException(400, "empty message")
 
     try:
-        await wa_client.send_text(phone, text)
+        send_result = await wa_client.send_text(phone, text)
     except Exception as e:
         raise HTTPException(502, f"failed to send: {e}")
 
+    # Capture wamid + initial 'sent' status on the admin message row so
+    # the chat viewer can render delivery check marks for operator-typed
+    # replies the same way it does for bot replies.
+    wamid = None
+    if isinstance(send_result, dict):
+        wamid = (((send_result.get("messages") or [{}]))[0] or {}).get("id")
     db.add(
         ConversationMessage(
-            phone=phone, role=MessageRole.admin, content=text, is_audio=False
+            phone=phone, role=MessageRole.admin, content=text, is_audio=False,
+            wa_message_id=wamid,
+            delivery_status="sent" if wamid else None,
         )
     )
     await db.commit()

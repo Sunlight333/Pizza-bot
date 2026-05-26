@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bot, User, Volume2, ShieldCheck } from 'lucide-react'
+import { Bot, User, Volume2, ShieldCheck, Check, CheckCheck, AlertTriangle } from 'lucide-react'
 
 import { conversationsApi } from '@/services/conversations'
 import PizzaSpinner from '@/components/ui/PizzaSpinner'
@@ -111,6 +111,36 @@ function MediaAttachment({ msg, dark }) {
   return null
 }
 
+// WhatsApp-style delivery indicator for outbound bubbles:
+//   sent      → single ✓ (muted)
+//   delivered → ✓✓ (muted)
+//   read      → ✓✓ (blue, like WA's brand color)
+//   failed    → ⚠ (red) with tooltip
+//   null      → render nothing (older history before status tracking, or
+//               still in-flight before Meta acks the wamid).
+function DeliveryStatus({ status }) {
+  if (status === 'read') {
+    return <CheckCheck size={12} className="text-blue-400" aria-label="lida" />
+  }
+  if (status === 'delivered') {
+    return <CheckCheck size={12} className="opacity-70" aria-label="entregue" />
+  }
+  if (status === 'sent') {
+    return <Check size={12} className="opacity-70" aria-label="enviada" />
+  }
+  if (status === 'failed') {
+    return (
+      <AlertTriangle
+        size={12}
+        className="text-red-400"
+        aria-label="envio falhou"
+        title="Envio falhou"
+      />
+    )
+  }
+  return null
+}
+
 function Bubble({ msg }) {
   const isAdmin = msg.role === 'admin'
   const isAssistant = msg.role === 'assistant'
@@ -159,7 +189,8 @@ function Bubble({ msg }) {
           )}
           <div className="text-[10px] opacity-60 mt-1 flex items-center gap-1 justify-end">
             {(msg.is_audio || msg.media_type === 'audio') && <Volume2 size={10} />}
-            {fmtTime(msg.created_at)}
+            <span>{fmtTime(msg.created_at)}</span>
+            {(isAssistant || isAdmin) && <DeliveryStatus status={msg.delivery_status} />}
           </div>
         </div>
         {isAssistant && (

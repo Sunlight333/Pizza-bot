@@ -203,7 +203,8 @@ async def _process_one(value: dict, msg: dict) -> None:
         async with AsyncSessionLocal() as db:
             reply = await process_incoming(db, phone=phone, text=synthetic)
         if reply:
-            await wa_client.send_text(phone, reply)
+            send_result = await wa_client.send_text(phone, reply)
+            await _stamp_wamid_on_latest_outbound(phone, send_result)
         return
 
     elif msg_type == "interactive":
@@ -235,7 +236,56 @@ async def _process_one(value: dict, msg: dict) -> None:
             push_name=push_name,
         )
     if reply:
-        await wa_client.send_text(phone, reply)
+        send_result = await wa_client.send_text(phone, reply)
+        await _stamp_wamid_on_latest_outbound(phone, send_result)
+
+
+async def _stamp_wamid_on_latest_outbound(phone: str, send_result: Any) -> None:
+    """Backfill wa_message_id + delivery_status='sent' on the most recent
+    assistant row for this phone that doesn't yet have a wamid.
+
+    Why backfill instead of writing it during the persist? `_persist_message`
+    in ai_engine.py runs INSIDE process_incoming, but the wamid only exists
+    AFTER the actual Graph send, which happens out here in the webhook
+    layer. Smallest-blast-radius design: keep ai_engine ignorant of the
+    transport, and patch the row here once the send returned a wamid.
+
+    Race: two outbound messages for the same phone in quick succession
+    could swap their wamid assignments. In practice the bot serialises
+    its replies (one reply per inbound turn) so this is rare and
+    self-correcting on the next status update.
+    """
+    if not isinstance(send_result, dict):
+        return
+    wamid = (((send_result.get("messages") or [{}]))[0] or {}).get("id")
+    if not wamid:
+        return
+    try:
+        from sqlalchemy import select, update
+        from app.models.conversation_message import ConversationMessage, MessageRole
+        async with AsyncSessionLocal() as db:
+            row = (
+                await db.execute(
+                    select(ConversationMessage.id)
+                    .where(
+                        ConversationMessage.phone == phone,
+                        ConversationMessage.role == MessageRole.assistant,
+                        ConversationMessage.wa_message_id.is_(None),
+                    )
+                    .order_by(ConversationMessage.created_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                return
+            await db.execute(
+                update(ConversationMessage)
+                .where(ConversationMessage.id == row)
+                .values(wa_message_id=wamid, delivery_status="sent")
+            )
+            await db.commit()
+    except Exception:
+        log.exception("wamid stamp failed for phone=%s wamid=%s", phone, wamid)
 
 
 async def _handle_safely(event: dict) -> None:
@@ -245,15 +295,35 @@ async def _handle_safely(event: dict) -> None:
                 await _process_one(value, msg)
             except Exception:
                 log.exception("webhook _process_one failed for msg %s", msg.get("id"))
-        # Statuses (delivered / read / failed) — log and skip for now.
+        # Statuses (sent / delivered / read / failed) — persist on the
+        # message row so the admin chat viewer can render check marks.
+        # Status events arrive ordered by stage (sent → delivered → read)
+        # but we don't rely on that; the bubble UI picks the highest
+        # known stage at render time.
+        from sqlalchemy import update
+        from app.models.conversation_message import ConversationMessage
         for entry in event.get("entry") or []:
             for change in entry.get("changes") or []:
                 statuses = (change.get("value") or {}).get("statuses") or []
                 for s in statuses:
+                    wamid = s.get("id")
+                    status = s.get("status")
                     log.info(
                         "webhook status: id=%s status=%s recipient=%s",
-                        s.get("id"), s.get("status"), s.get("recipient_id"),
+                        wamid, status, s.get("recipient_id"),
                     )
+                    if not wamid or not status:
+                        continue
+                    try:
+                        async with AsyncSessionLocal() as db:
+                            await db.execute(
+                                update(ConversationMessage)
+                                .where(ConversationMessage.wa_message_id == wamid)
+                                .values(delivery_status=status)
+                            )
+                            await db.commit()
+                    except Exception:
+                        log.exception("status persist failed for wamid=%s", wamid)
     except Exception:
         log.exception("webhook _handle_safely failed")
 
