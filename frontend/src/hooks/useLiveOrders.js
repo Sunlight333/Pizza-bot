@@ -4,17 +4,17 @@ import toast from 'react-hot-toast'
 import { useAuthStore } from '@/stores/auth'
 import { getWsBase } from '@/utils/apiUrl'
 
-export function useLiveOrders({ onNewOrder, onStatusChange } = {}) {
+export function useLiveOrders({ onNewOrder, onStatusChange, onChatMessage } = {}) {
   const qc = useQueryClient()
   const token = useAuthStore((s) => s.token)
   const wsRef = useRef(null)
 
   // Stash callbacks in refs so the effect doesn't re-fire when consumers
   // pass inline arrow functions (which would tear down + reconnect on every render).
-  const handlersRef = useRef({ onNewOrder, onStatusChange })
+  const handlersRef = useRef({ onNewOrder, onStatusChange, onChatMessage })
   useEffect(() => {
-    handlersRef.current = { onNewOrder, onStatusChange }
-  }, [onNewOrder, onStatusChange])
+    handlersRef.current = { onNewOrder, onStatusChange, onChatMessage }
+  }, [onNewOrder, onStatusChange, onChatMessage])
 
   useEffect(() => {
     if (!token) return
@@ -46,6 +46,8 @@ export function useLiveOrders({ onNewOrder, onStatusChange } = {}) {
             handlersRef.current.onNewOrder?.(data)
           } else if (event === 'status_change') {
             handlersRef.current.onStatusChange?.(data)
+          } else if (event === 'chat_message') {
+            handlersRef.current.onChatMessage?.(data)
           }
         } catch {
           // malformed frame — ignore

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, Check, Trash2, AlertTriangle, AlertCircle, ShoppingBag } from 'lucide-react'
+import { Bell, Check, Trash2, AlertTriangle, AlertCircle, ShoppingBag, MessageCircle } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 
 import { useNotifications } from '@/stores/notifications'
@@ -9,6 +9,7 @@ import { menuApi } from '@/services/menu'
 
 const ICONS = {
   order: ShoppingBag,
+  message: MessageCircle,
   warning: AlertCircle,
   fiscal: AlertTriangle,
   system: AlertTriangle,
@@ -16,6 +17,7 @@ const ICONS = {
 
 const COLORS = {
   order: 'text-success',
+  message: 'text-blue-400',
   warning: 'text-orange-400',
   fiscal: 'text-yellow-400',
   system: 'text-white/60',
@@ -42,7 +44,12 @@ export default function NotificationsBell() {
   const clear = useNotifications((s) => s.clear)
   const unread = items.filter((i) => !i.read).length
 
-  // 1. Live orders → push notification on every new_order WS event.
+  // 1. Live orders + customer chat → push notifications.
+  //    The same /api/orders/live socket multiplexes both, so one hook
+  //    powers two notification channels. Chat notifications dedupe by
+  //    phone (using id="chat-<phone>") so 5 quick messages from one
+  //    customer collapse into a single bell entry showing the LATEST
+  //    excerpt — the bell counter doesn't get spammy.
   useLiveOrders({
     onNewOrder: (data) => {
       push({
@@ -50,6 +57,30 @@ export default function NotificationsBell() {
         title: `Pedido #${String(data.order_number).padStart(3, '0')}`,
         message: `Novo pedido — R$ ${Number(data.total).toFixed(2).replace('.', ',')}`,
         link: '/orders',
+      })
+    },
+    onChatMessage: (data) => {
+      // Only notify on inbound customer messages — bot replies and
+      // operator-typed messages are not events the operator needs to
+      // be alerted about (they ARE the operator, or the bot is acting
+      // on their behalf).
+      if (!data || data.role !== 'user') return
+      const phone = data.phone || ''
+      if (!phone) return
+      const preview = (data.content || '').trim()
+      // Friendly phone display: +55 (17) 99999-9999 → 17 9 9999-9999 too
+      // noisy here; keep raw digits trimmed to the last 8 so it reads as
+      // a short ID without leaking the full international number in the
+      // bell list.
+      const tail = phone.replace(/\D/g, '').slice(-8)
+      push({
+        // Stable id by phone so consecutive messages REPLACE instead of
+        // stacking 12 entries for the same customer.
+        id: `chat-${phone}`,
+        type: 'message',
+        title: `Nova mensagem · ${tail}`,
+        message: preview || (data.media_type ? '[mídia]' : '[mensagem vazia]'),
+        link: `/conversations?phone=${encodeURIComponent(phone)}`,
       })
     },
   })
