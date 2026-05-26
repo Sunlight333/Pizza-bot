@@ -1,10 +1,27 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { MessageCircle, Clock, ShoppingBag } from 'lucide-react'
 
 import { conversationsApi, STATE_LABEL } from '@/services/conversations'
 import { ASSETS } from '@/utils/assets'
 import { displayName, friendlyPhone } from '@/utils/customer'
+import { useLiveOrders } from '@/hooks/useLiveOrders'
+
+// Tiny red counter used on each conversation row when there are
+// inbound messages the operator hasn't replied to yet. Caps at 99+
+// so a runaway customer doesn't blow up the layout.
+function UnreadBadge({ count }) {
+  if (!count) return null
+  return (
+    <span
+      className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold flex items-center justify-center shrink-0"
+      title={`${count} mensagem(ns) sem resposta`}
+      aria-label={`${count} mensagens sem resposta`}
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  )
+}
 
 const relTime = (iso) => {
   if (!iso) return ''
@@ -20,6 +37,8 @@ const relTime = (iso) => {
 // renders identical labels.
 
 export default function ConversationList({ selectedPhone, onSelect }) {
+  const qc = useQueryClient()
+
   const { data: active = [], isLoading } = useQuery({
     queryKey: ['conv-active'],
     queryFn: conversationsApi.active,
@@ -30,6 +49,17 @@ export default function ConversationList({ selectedPhone, onSelect }) {
     queryKey: ['conv-recent'],
     queryFn: () => conversationsApi.recentPhones(30),
     refetchInterval: 60_000,
+  })
+
+  // Inbound customer messages should bump the unread badges immediately,
+  // not wait for the 10s poll — otherwise the operator has up to 10s of
+  // ambiguity about whether they have new work.
+  useLiveOrders({
+    onChatMessage: (data) => {
+      if (!data || data.role !== 'user') return
+      qc.invalidateQueries({ queryKey: ['conv-active'] })
+      qc.invalidateQueries({ queryKey: ['conv-recent'] })
+    },
   })
 
   const activePhones = new Set(active.map((c) => c.phone))
@@ -74,9 +104,12 @@ export default function ConversationList({ selectedPhone, onSelect }) {
                         {c.customer_name || friendlyPhone(c.phone)}
                       </div>
                     </div>
-                    <span className="text-[10px] text-white/40 flex items-center gap-0.5 shrink-0">
-                      <Clock size={10} /> {relTime(c.last_message_at)}
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <UnreadBadge count={c.unread_count} />
+                      <span className="text-[10px] text-white/40 flex items-center gap-0.5">
+                        <Clock size={10} /> {relTime(c.last_message_at)}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${state.color}`}>
@@ -103,12 +136,15 @@ export default function ConversationList({ selectedPhone, onSelect }) {
               <button
                 key={r.phone}
                 onClick={() => onSelect(r.phone)}
-                className={`w-full flex items-center justify-between text-xs px-3 py-2 rounded-lg transition-colors ${
+                className={`w-full flex items-center justify-between gap-2 text-xs px-3 py-2 rounded-lg transition-colors ${
                   selectedPhone === r.phone ? 'bg-primary/10' : 'hover:bg-white/5'
                 }`}
               >
-                <span className="text-white/60 truncate">{displayName(r.customer_name, r.phone)}</span>
-                <span className="text-white/30">{relTime(r.last)}</span>
+                <span className="text-white/60 truncate flex-1">{displayName(r.customer_name, r.phone)}</span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <UnreadBadge count={r.unread_count} />
+                  <span className="text-white/30">{relTime(r.last)}</span>
+                </div>
               </button>
             ))}
           </div>

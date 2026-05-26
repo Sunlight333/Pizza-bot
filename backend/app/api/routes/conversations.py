@@ -34,6 +34,12 @@ class ActiveConversation(BaseModel):
     last_message_preview: Optional[str] = None
     last_message_at: Optional[datetime] = None
     is_human_takeover: bool
+    # Number of inbound (role=user) messages that arrived after the most
+    # recent outbound reply. Resets to 0 the moment the bot or operator
+    # answers. Drives the red badge on the conversations sidebar so the
+    # operator can spot un-answered customers at a glance — especially
+    # critical in human-takeover where the bot won't auto-reply.
+    unread_count: int = 0
 
 
 class ConversationMessageOut(BaseModel):
@@ -145,6 +151,56 @@ async def list_stale(
     return out
 
 
+async def _unread_counts_by_phone(
+    db: AsyncSession, phones: list[str]
+) -> dict[str, int]:
+    """
+    For each phone, count inbound (role=user) messages whose created_at is
+    newer than the most recent outbound (assistant/admin) message for that
+    phone. If a phone has no outbound history at all, every inbound counts.
+
+    One query, indexed on (phone, created_at) via the per-column indexes
+    already present on conversation_messages. Returns a plain dict, missing
+    phones default to 0 at the call site.
+    """
+    if not phones:
+        return {}
+
+    last_outbound_subq = (
+        select(
+            ConversationMessage.phone.label("phone"),
+            func.max(ConversationMessage.created_at).label("last_out"),
+        )
+        .where(
+            ConversationMessage.phone.in_(phones),
+            ConversationMessage.role.in_([MessageRole.assistant, MessageRole.admin]),
+        )
+        .group_by(ConversationMessage.phone)
+        .subquery()
+    )
+
+    res = await db.execute(
+        select(
+            ConversationMessage.phone,
+            func.count(ConversationMessage.id),
+        )
+        .outerjoin(
+            last_outbound_subq,
+            last_outbound_subq.c.phone == ConversationMessage.phone,
+        )
+        .where(
+            ConversationMessage.phone.in_(phones),
+            ConversationMessage.role == MessageRole.user,
+            # No outbound ever (NULL) → count all inbound. Otherwise, only
+            # inbound newer than the last outbound counts as "unread".
+            (last_outbound_subq.c.last_out.is_(None))
+            | (ConversationMessage.created_at > last_outbound_subq.c.last_out),
+        )
+        .group_by(ConversationMessage.phone)
+    )
+    return {p: c for p, c in res.all()}
+
+
 @router.get("/active", response_model=List[ActiveConversation])
 async def list_active(db: AsyncSession = Depends(get_db)):
     """List ongoing conversations from Redis (TTL'd) + DB-backed name."""
@@ -178,6 +234,7 @@ async def list_active(db: AsyncSession = Depends(get_db)):
         .group_by(ConversationMessage.phone)
     )
     last_by_phone = {p: t for p, t in last_msg_rows.all()}
+    unread_by_phone = await _unread_counts_by_phone(db, phones)
 
     for phone, raw in zip(phones, raw_states):
         if not raw:
@@ -195,6 +252,7 @@ async def list_active(db: AsyncSession = Depends(get_db)):
                 customer_name=name_by_phone.get(phone),
                 last_message_at=last_by_phone.get(phone),
                 is_human_takeover=data.get("state") == "human_takeover",
+                unread_count=int(unread_by_phone.get(phone, 0)),
             )
         )
 
@@ -394,7 +452,13 @@ async def recent_phones(limit: int = 30, db: AsyncSession = Depends(get_db)):
         select(Customer.phone, Customer.name).where(Customer.phone.in_(phones))
     )
     name_by_phone = {p: n for p, n in name_rows.all()}
+    unread_by_phone = await _unread_counts_by_phone(db, phones)
     return [
-        {"phone": p, "last": t.isoformat(), "customer_name": name_by_phone.get(p)}
+        {
+            "phone": p,
+            "last": t.isoformat(),
+            "customer_name": name_by_phone.get(p),
+            "unread_count": int(unread_by_phone.get(p, 0)),
+        }
         for p, t in rows
     ]
