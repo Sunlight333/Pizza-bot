@@ -91,9 +91,7 @@ def _get_redis() -> _redis.Redis:
 # hatch so the bot can still be exercised end-to-end while real
 # customer traffic is parked.
 _BOT_REDIRECT_MESSAGE = (
-    "Olá! 🍕 Aqui é da Pizzaria Planalto. Esse canal está em ajustes no "
-    "momento — pra fazer seu pedido, fala com a gente direto no "
-    "+55 17 3237-1112 que te respondemos rapidinho. Obrigado pela paciência! 😊"
+    "Not currently in operation"
 )
 _BOT_KEYWORD_RE = re.compile(
     r"^\s*bot\b[\s:,.!?\-]*(.*)$",
