@@ -217,11 +217,35 @@ export default function ChatViewer({ phone }) {
   // also broadcasts chat_message events
   useChatStream({
     phone,
-    onMessage: () => {
+    onMessage: (data) => {
       qc.invalidateQueries({ queryKey: ['chat', phone] })
       qc.invalidateQueries({ queryKey: ['conv-active'] })
+      // If the operator is actively viewing THIS phone and a new inbound
+      // arrives, treat it as already seen — bump the server pointer and
+      // refresh the sidebar so the badge doesn't pop up redundantly.
+      if (data && data.role === 'user' && data.phone === phone) {
+        conversationsApi.seen(phone)
+          .then(() => {
+            qc.invalidateQueries({ queryKey: ['conv-active'] })
+            qc.invalidateQueries({ queryKey: ['conv-recent'] })
+          })
+          .catch(() => {})
+      }
     },
   })
+
+  // Mark conversation as seen whenever the operator opens it. The backend
+  // /seen endpoint writes a Redis pointer that the unread-count query
+  // factors in, so the red badge clears immediately on click.
+  useEffect(() => {
+    if (!phone) return
+    conversationsApi.seen(phone)
+      .then(() => {
+        qc.invalidateQueries({ queryKey: ['conv-active'] })
+        qc.invalidateQueries({ queryKey: ['conv-recent'] })
+      })
+      .catch(() => {})
+  }, [phone, qc])
 
   useEffect(() => {
     if (scrollRef.current) {

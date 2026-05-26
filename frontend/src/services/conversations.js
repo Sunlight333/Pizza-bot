@@ -8,6 +8,9 @@ export const conversationsApi = {
     api.get(`/api/conversations/${phone}/messages`, { params: { limit } }).then((r) => r.data),
   takeover: (phone) => api.post(`/api/conversations/${phone}/takeover`).then((r) => r.data),
   release: (phone) => api.post(`/api/conversations/${phone}/release`).then((r) => r.data),
+  // Tell the backend the operator has just viewed this conversation, so
+  // the unread badge clears without requiring an outbound reply.
+  seen: (phone) => api.post(`/api/conversations/${phone}/seen`).then((r) => r.data),
   send: (phone, content) =>
     api.post(`/api/conversations/${phone}/send`, { content }).then((r) => r.data),
   sendMedia: (phone, { file, mediaType, caption }) => {

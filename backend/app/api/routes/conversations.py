@@ -151,20 +151,51 @@ async def list_stale(
     return out
 
 
+# Redis pointer set by POST /{phone}/seen — the moment the operator opens
+# the chat viewer for a phone, this is bumped to "now" so the unread badge
+# clears without requiring an outbound reply. 30-day TTL is enough that
+# even rarely-touched chats stay marked seen across deploys.
+SEEN_TTL_SECONDS = 30 * 24 * 60 * 60
+
+
+def _seen_key(phone: str) -> str:
+    return f"seen:{phone}"
+
+
+async def _get_seen_at_map(phones: list[str]) -> dict[str, datetime]:
+    """Bulk-fetch the operator's last-seen timestamp per phone from Redis."""
+    if not phones:
+        return {}
+    client = redis.from_url(settings.redis_url, decode_responses=True)
+    raw = await client.mget([_seen_key(p) for p in phones])
+    out: dict[str, datetime] = {}
+    for phone, value in zip(phones, raw):
+        if not value:
+            continue
+        try:
+            out[phone] = datetime.fromisoformat(value)
+        except ValueError:
+            continue
+    return out
+
+
 async def _unread_counts_by_phone(
     db: AsyncSession, phones: list[str]
 ) -> dict[str, int]:
     """
-    For each phone, count inbound (role=user) messages whose created_at is
-    newer than the most recent outbound (assistant/admin) message for that
-    phone. If a phone has no outbound history at all, every inbound counts.
+    For each phone, count inbound (role=user) messages newer than BOTH
+    the most recent outbound (assistant/admin) message AND the operator's
+    last "seen" timestamp from Redis. Whichever is more recent wins —
+    so opening the chat clears the badge even without replying, and
+    sending a reply clears it even if the operator never opened the panel
+    (e.g., the bot answered).
 
-    One query, indexed on (phone, created_at) via the per-column indexes
-    already present on conversation_messages. Returns a plain dict, missing
-    phones default to 0 at the call site.
+    Returns a plain dict; missing phones default to 0 at the call site.
     """
     if not phones:
         return {}
+
+    seen_map = await _get_seen_at_map(phones)
 
     last_outbound_subq = (
         select(
@@ -182,7 +213,8 @@ async def _unread_counts_by_phone(
     res = await db.execute(
         select(
             ConversationMessage.phone,
-            func.count(ConversationMessage.id),
+            ConversationMessage.created_at,
+            last_outbound_subq.c.last_out,
         )
         .outerjoin(
             last_outbound_subq,
@@ -191,14 +223,20 @@ async def _unread_counts_by_phone(
         .where(
             ConversationMessage.phone.in_(phones),
             ConversationMessage.role == MessageRole.user,
-            # No outbound ever (NULL) → count all inbound. Otherwise, only
-            # inbound newer than the last outbound counts as "unread".
-            (last_outbound_subq.c.last_out.is_(None))
-            | (ConversationMessage.created_at > last_outbound_subq.c.last_out),
         )
-        .group_by(ConversationMessage.phone)
     )
-    return {p: c for p, c in res.all()}
+
+    counts: dict[str, int] = {}
+    for phone, created_at, last_out in res.all():
+        # Pick whichever cutoff is later — last_out (we replied) or seen_at
+        # (operator opened the chat). Both may be None.
+        cutoff = last_out
+        seen_at = seen_map.get(phone)
+        if seen_at is not None and (cutoff is None or seen_at > cutoff):
+            cutoff = seen_at
+        if cutoff is None or created_at > cutoff:
+            counts[phone] = counts.get(phone, 0) + 1
+    return counts
 
 
 @router.get("/active", response_model=List[ActiveConversation])
@@ -286,6 +324,23 @@ async def list_messages(
         )
         for r in rows
     ]
+
+
+@router.post("/{phone}/seen")
+async def mark_seen(phone: str):
+    """
+    Bumps the operator's last-seen pointer for this phone to NOW. Called
+    by the chat viewer when the operator opens a conversation or while
+    they're viewing it and new inbound messages stream in. Clears the
+    red unread badge without requiring a reply to be sent.
+    """
+    client = redis.from_url(settings.redis_url, decode_responses=True)
+    await client.set(
+        _seen_key(phone),
+        datetime.now(timezone.utc).isoformat(),
+        ex=SEEN_TTL_SECONDS,
+    )
+    return {"ok": True}
 
 
 @router.post("/{phone}/takeover")
