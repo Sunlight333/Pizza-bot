@@ -84,18 +84,18 @@ def _get_redis() -> _redis.Redis:
     return _redis_client
 
 
-# Temporary "all customer messages get redirected to the other number"
-# mode. Active while settings.bot_redirect_enabled is true. Customers
-# can bypass by prefixing their message with the literal word "bot"
-# (case-insensitive, optional separator) — operator's testing escape
-# hatch so the bot can still be exercised end-to-end while real
-# customer traffic is parked.
+# Shutdown notice. Active while settings.bot_redirect_enabled is true.
+# Every inbound customer message receives EXACTLY this text and nothing
+# else — the LLM, greetings, fast-paths, handoff and human-takeover all
+# get bypassed. The previous "bot" keyword bypass was removed: the
+# operator wants no customer to ever receive any other automated reply
+# while the shop is in shutdown mode.
 _BOT_REDIRECT_MESSAGE = (
-    "Not currently in operation"
-)
-_BOT_KEYWORD_RE = re.compile(
-    r"^\s*bot\b[\s:,.!?\-]*(.*)$",
-    re.IGNORECASE | re.DOTALL,
+    "Olá! Agradecemos o seu contato.\n\n"
+    "Informamos que a Pizzaria Planalto encerrou suas atividades e "
+    "não está mais realizando pedidos.\n\n"
+    "Agradecemos a preferência de todos os clientes que nos "
+    "acompanharam ao longo deste tempo."
 )
 
 
@@ -1998,36 +1998,19 @@ async def process_incoming(
         media_url=media_url, media_type=media_type,
     )
 
-    # ---------- Redirect mode ----------
-    # While settings.bot_redirect_enabled is true, real customer traffic
-    # gets a fixed "talk to us at the other number" reply and the LLM is
-    # bypassed entirely. Per-phone testing escape hatch: the first message
-    # starting with "bot" sets state["test_mode"] = True and is processed
-    # normally; every subsequent message from that phone bypasses the
-    # redirect for the rest of the conversation (until state TTL expires
-    # at 30 min idle). Requiring "bot" on every single message was the
-    # original behavior — bad UX, fixed 2026-05-21 after testing showed
-    # it was unusable.
-    if settings.bot_redirect_enabled and not state.get("test_mode"):
-        m = _BOT_KEYWORD_RE.match(text or "")
-        if m:
-            stripped = (m.group(1) or "").strip()
-            # Plain "bot" with no payload → treat as "oi" so the greeting
-            # fast-path can fire and the tester gets an instant response.
-            text = stripped or "oi"
-            state["test_mode"] = True
-            # Persist the flag immediately — if the LLM call below errors
-            # out, we still want the next message from this tester to
-            # bypass the redirect.
-            await state_svc.set_state(phone, state)
-        else:
-            # User message was already persisted+broadcast above.
-            await _persist_message(
-                db, phone=phone, customer_id=customer.id,
-                role=MessageRole.assistant, content=_BOT_REDIRECT_MESSAGE,
-            )
-            log.info("redirect mode: replied to %s with redirect message", phone)
-            return _BOT_REDIRECT_MESSAGE
+    # ---------- Shutdown mode ----------
+    # While settings.bot_redirect_enabled is true, EVERY inbound message
+    # gets the fixed shutdown notice and nothing else. No LLM call, no
+    # greeting fast-path, no handoff, no human-takeover override — the
+    # operator explicitly asked that no other automated reply ever go
+    # out while the shop is parked. There is no escape hatch on purpose.
+    if settings.bot_redirect_enabled:
+        await _persist_message(
+            db, phone=phone, customer_id=customer.id,
+            role=MessageRole.assistant, content=_BOT_REDIRECT_MESSAGE,
+        )
+        log.info("shutdown mode: replied to %s with shutdown notice", phone)
+        return _BOT_REDIRECT_MESSAGE
 
     # ---------- Greeting fast-path ----------
     # Most first messages are a single word "Ola" / "Oi" / "Bom dia" and the
